@@ -185,7 +185,11 @@ try {
     }
 
     respond(['error' => 'Unknown action.'], 404);
-} catch (PDOException $exception) {
-    if ($pdo->inTransaction()) $pdo->rollBack();
-    respond(['error' => 'Request failed. Check the database schema and submitted values.', 'details' => getenv('APP_ENV') === 'development' ? $exception->getMessage() : null], 500);
+} catch (Throwable $e) {
+    http_response_code(400);
+    echo json_encode([
+        'error' => 'Request failed. Check the database schema and submitted values.',
+        'details' => $e->getMessage()
+    ]);
+    exit;
 }
