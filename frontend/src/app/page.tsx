@@ -151,7 +151,14 @@ export default function Home() {
       const data = await response.json();
       if (Array.isArray(data.gigs)) setGigs(data.gigs);
       if (Array.isArray(data.skills)) setSkills(data.skills);
-      if (data.stats) setStats(data.stats);
+      if (data.stats) {
+        setStats({
+          total: Number(data.stats.total || 0),
+          open_count: Number(data.stats.open_count || 0),
+          completed_count: Number(data.stats.completed_count || 0),
+          completion_rate: Number(data.stats.completion_rate || 0),
+        });
+      }
       setConnected(true);
     } catch {
       setConnected(false);
@@ -164,7 +171,7 @@ export default function Home() {
       const myGigsRes = await fetch(`${API}/index.php?action=my_gigs&user_id=${user.user_id}`);
       if (myGigsRes.ok) {
         const data = await myGigsRes.json();
-        if (Array.isArray(data.gigs)) setGigs(data.gigs);
+        // Do not overwrite marketplace gigs list
       }
       const myBidsRes = await fetch(`${API}/index.php?action=my_bids&user_id=${user.user_id}`);
       if (myBidsRes.ok) {
