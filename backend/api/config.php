@@ -62,6 +62,7 @@ if (str_contains($host, 'tidbcloud.com') || getenv('DB_SSL') === 'true') {
 
 try {
     $pdo = new PDO($dsn, $username, $password, $options);
+    $pdo->exec("SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''))");
 } catch (PDOException $exception) {
     http_response_code(500);
     echo json_encode([
