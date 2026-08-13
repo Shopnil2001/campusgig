@@ -68,7 +68,7 @@ type Review = {
   reviewer_name: string;
 };
 
-const API = process.env.NEXT_PUBLIC_API_URL || "api";
+const API = process.env.NEXT_PUBLIC_API_URL || "https://campusgigs-backend.onrender.com";
 
 const demoUsers: User[] = [
   { user_id: 1, name: "Aisha Rahman", email: "aisha@campus.edu", department: "Computer Science", batch: 2026, role_flag: "student", avatar_color: "coral" },
