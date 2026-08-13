@@ -1,5 +1,8 @@
 FROM php:8.2-apache
 
+# Install CA certificates and dependencies
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
 # Enable Apache Mod Rewrite for CORS and API routing
 RUN a2enmod rewrite
 

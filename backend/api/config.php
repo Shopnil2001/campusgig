@@ -47,7 +47,13 @@ $options = [
     PDO::ATTR_EMULATE_PREPARES => false,
 ];
 
-if (getenv('MYSQL_ATTR_SSL_CA')) {
+if (str_contains($host, 'tidbcloud.com') || getenv('DB_SSL') === 'true') {
+    $caPath = '/etc/ssl/certs/ca-certificates.crt';
+    if (file_exists($caPath)) {
+        $options[PDO::MYSQL_ATTR_SSL_CA] = $caPath;
+    }
+    $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = false;
+} elseif (getenv('MYSQL_ATTR_SSL_CA')) {
     $options[PDO::MYSQL_ATTR_SSL_CA] = getenv('MYSQL_ATTR_SSL_CA');
 }
 
