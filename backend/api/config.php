@@ -2,6 +2,9 @@
 
 declare(strict_types=1);
 
+ini_set('display_errors', '0');
+error_reporting(E_ALL);
+
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
 header('Content-Type: application/json; charset=utf-8');
 header("Access-Control-Allow-Origin: {$origin}");

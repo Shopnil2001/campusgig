@@ -126,8 +126,25 @@ try {
 
     if ($action === 'create_gig' && $method === 'POST') {
         requireFields($body, ['title', 'description', 'budget', 'deadline', 'skills']);
-        $pdo->beginTransaction(); $stmt = $pdo->prepare('INSERT INTO gigs (client_id, title, description, budget, deadline) VALUES (?, ?, ?, ?, ?)'); $stmt->execute([$userId, $body['title'], $body['description'], $body['budget'], $body['deadline']]); $gigId = (int) $pdo->lastInsertId();
-        $skillStmt = $pdo->prepare('INSERT INTO gig_skill_required (gig_id, skill_id) VALUES (?, ?)'); foreach ((array) $body['skills'] as $skillId) $skillStmt->execute([$gigId, (int) $skillId]); $pdo->commit(); respond(['message' => 'Gig posted successfully.', 'gig_id' => $gigId], 201);
+        $deadline = trim((string)($body['deadline'] ?? ''));
+        if ($deadline !== '') {
+            $ts = strtotime($deadline);
+            if ($ts !== false) {
+                $deadline = date('Y-m-d', $ts);
+            }
+        }
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare('INSERT INTO gigs (client_id, title, description, budget, deadline) VALUES (?, ?, ?, ?, ?)');
+        $stmt->execute([$userId, $body['title'], $body['description'], $body['budget'], $deadline]);
+        $gigId = (int) $pdo->lastInsertId();
+        $skillStmt = $pdo->prepare('INSERT INTO gig_skill_required (gig_id, skill_id) VALUES (?, ?)');
+        foreach ((array) $body['skills'] as $skillId) {
+            if ((int)$skillId > 0) {
+                $skillStmt->execute([$gigId, (int) $skillId]);
+            }
+        }
+        $pdo->commit();
+        respond(['message' => 'Gig posted successfully.', 'gig_id' => $gigId], 201);
     }
 
     if ($action === 'create_bid' && $method === 'POST') {
