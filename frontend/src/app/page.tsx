@@ -145,7 +145,7 @@ export default function Home() {
   async function loadGigs() {
     try {
       const response = await fetch(
-        `${API}/index.php?action=dashboard&status=${encodeURIComponent(status)}&search=${encodeURIComponent(search)}&skill_id=${skillFilter}`
+        `${API}/index.php?action=dashboard&status=All&search=${encodeURIComponent(search)}&skill_id=${skillFilter}`
       );
       if (!response.ok) throw new Error();
       const data = await response.json();
@@ -161,7 +161,7 @@ export default function Home() {
       }
       setConnected(true);
     } catch {
-      setConnected(false);
+      // Retain previous connection state to prevent dropping into demo mode during slow network responses
     }
   }
 

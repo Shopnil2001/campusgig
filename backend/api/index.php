@@ -99,11 +99,13 @@ try {
             $params[] = $skill;
         }
         if ($search) {
-            $where[] = '(g.title LIKE ? OR g.description LIKE ? OR u.name LIKE ? OR u.department LIKE ?)';
-            $params[] = "%{$search}%";
-            $params[] = "%{$search}%";
-            $params[] = "%{$search}%";
-            $params[] = "%{$search}%";
+            $where[] = '(LOWER(g.title) LIKE LOWER(?) OR LOWER(g.description) LIKE LOWER(?) OR LOWER(u.name) LIKE LOWER(?) OR LOWER(u.department) LIKE LOWER(?) OR LOWER(s.skill_name) LIKE LOWER(?))';
+            $searchPattern = "%{$search}%";
+            $params[] = $searchPattern;
+            $params[] = $searchPattern;
+            $params[] = $searchPattern;
+            $params[] = $searchPattern;
+            $params[] = $searchPattern;
         }
         $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
         $sql = "SELECT g.gig_id, g.title, g.description, g.budget, DATE_FORMAT(g.deadline, '%b %d, %Y') deadline, g.status, g.created_at, u.user_id client_id, u.name client_name, u.department, COUNT(DISTINCT b.bid_id) bid_count, GROUP_CONCAT(DISTINCT s.skill_name ORDER BY s.skill_name SEPARATOR ', ') skills FROM gigs g JOIN users u ON u.user_id = g.client_id LEFT JOIN bids b ON b.gig_id = g.gig_id LEFT JOIN gig_skill_required gsr ON gsr.gig_id = g.gig_id LEFT JOIN skills s ON s.skill_id = gsr.skill_id {$whereClause} GROUP BY g.gig_id, g.title, g.description, g.budget, g.deadline, g.status, g.created_at, u.user_id, u.name, u.department ORDER BY g.created_at DESC";
