@@ -68,7 +68,7 @@ type Review = {
   reviewer_name: string;
 };
 
-const API = process.env.NEXT_PUBLIC_API_URL || "https://campusgigs.infy.click/api";
+const API = process.env.NEXT_PUBLIC_API_URL || "/api-proxy";
 
 const demoSkills: Skill[] = [
   { skill_id: 1, skill_name: "Web Development", category: "Technology" },
@@ -109,7 +109,7 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [connected, setConnected] = useState(false);
 
-  // Restore authenticated session from localStorage
+  // Restore session
   useEffect(() => {
     try {
       const stored = localStorage.getItem("campusgigs_user");
@@ -172,11 +172,10 @@ export default function Home() {
     }
   }
 
-  // Refetch when status, skillFilter, or search query changes
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadGigs();
-    }, 250);
+    }, 200);
     return () => window.clearTimeout(timer);
   }, [status, skillFilter, search]);
 
@@ -346,17 +345,37 @@ export default function Home() {
         .slice(0, 2)
     : "G";
 
-  // Search filtering matching title, description, skills, student name, or department
+  // Filter gigs by Status, Selected Skill, and Keyword Search
   const filteredGigs = gigs.filter((gig) => {
+    // 1. Status Filter
     if (status !== "All" && gig.status !== status) return false;
+
+    // 2. Category Skill Filter
+    if (skillFilter > 0) {
+      const selectedSkillObj = skills.find((s) => s.skill_id === skillFilter);
+      if (selectedSkillObj) {
+        const gigSkillsLower = (gig.skills || "").toLowerCase();
+        const selectedNameLower = selectedSkillObj.skill_name.toLowerCase();
+        if (!gigSkillsLower.includes(selectedNameLower)) {
+          return false;
+        }
+      }
+    }
+
+    // 3. Keyword Search Filter
     const query = search.trim().toLowerCase();
-    if (!query) return true;
-    const titleMatch = gig.title.toLowerCase().includes(query);
-    const descMatch = gig.description.toLowerCase().includes(query);
-    const skillMatch = (gig.skills || "").toLowerCase().includes(query);
-    const clientMatch = gig.client_name.toLowerCase().includes(query);
-    const deptMatch = gig.department.toLowerCase().includes(query);
-    return titleMatch || descMatch || skillMatch || clientMatch || deptMatch;
+    if (query) {
+      const titleMatch = gig.title.toLowerCase().includes(query);
+      const descMatch = gig.description.toLowerCase().includes(query);
+      const skillMatch = (gig.skills || "").toLowerCase().includes(query);
+      const clientMatch = gig.client_name.toLowerCase().includes(query);
+      const deptMatch = gig.department.toLowerCase().includes(query);
+      if (!titleMatch && !descMatch && !skillMatch && !clientMatch && !deptMatch) {
+        return false;
+      }
+    }
+
+    return true;
   });
 
   return (
@@ -504,7 +523,7 @@ export default function Home() {
               <p className="overline">
                 CAMPUS MARKETPLACE{" "}
                 <span className={connected ? "online" : "offline"}>
-                  ● {connected ? "LIVE API CONNECTED" : "LOCAL DEMO MODE"}
+                  ● {connected ? "LIVE API CONNECTED" : "OFFLINE DEMO MODE"}
                 </span>
               </p>
               <h1>
@@ -628,7 +647,7 @@ export default function Home() {
                   <div className="empty-state">
                     <span>⌁</span>
                     <h3>No gigs found matching criteria</h3>
-                    <p>Try clearing filters or search for another keyword.</p>
+                    <p>Try clearing filters or searching another term.</p>
                   </div>
                 )}
               </div>
@@ -668,7 +687,7 @@ export default function Home() {
           <footer className="campus-footer">
             <span>
               <i className={connected ? "footer-dot live" : "footer-dot"} />{" "}
-              {connected ? `Connected to Live API (${API})` : "Local Mode Active"}
+              {connected ? `Connected to Live Backend (${API})` : "Offline Demo Mode Active"}
             </span>
             <span>Built for CSE-311 · CampusGigs</span>
           </footer>
