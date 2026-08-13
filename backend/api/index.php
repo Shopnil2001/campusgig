@@ -84,12 +84,32 @@ try {
     }
 
     if ($action === 'dashboard') {
-        $status = $_GET['status'] ?? 'Open'; $skill = (int) ($_GET['skill_id'] ?? 0); $search = trim($_GET['search'] ?? '');
-        $where = ['g.status = ?']; $params = [$status];
-        if ($skill) { $where[] = 'EXISTS (SELECT 1 FROM gig_skill_required gsr WHERE gsr.gig_id = g.gig_id AND gsr.skill_id = ?)'; $params[] = $skill; }
-        if ($search) { $where[] = '(g.title LIKE ? OR g.description LIKE ?)'; $params[] = "%{$search}%"; $params[] = "%{$search}%"; }
-        $sql = 'SELECT g.gig_id, g.title, g.description, g.budget, DATE_FORMAT(g.deadline, "%b %d, %Y") deadline, g.status, g.created_at, u.user_id client_id, u.name client_name, u.department, COUNT(DISTINCT b.bid_id) bid_count, GROUP_CONCAT(DISTINCT s.skill_name ORDER BY s.skill_name SEPARATOR ", ") skills FROM gigs g JOIN users u ON u.user_id = g.client_id LEFT JOIN bids b ON b.gig_id = g.gig_id LEFT JOIN gig_skill_required gsr ON gsr.gig_id = g.gig_id LEFT JOIN skills s ON s.skill_id = gsr.skill_id WHERE ' . implode(' AND ', $where) . ' GROUP BY g.gig_id ORDER BY g.created_at DESC';
-        $stmt = $pdo->prepare($sql); $stmt->execute($params); $gigs = $stmt->fetchAll();
+        $status = $_GET['status'] ?? 'Open';
+        $skill = (int) ($_GET['skill_id'] ?? 0);
+        $search = trim($_GET['search'] ?? '');
+        $where = [];
+        $params = [];
+
+        if ($status && $status !== 'All') {
+            $where[] = 'g.status = ?';
+            $params[] = $status;
+        }
+        if ($skill) {
+            $where[] = 'EXISTS (SELECT 1 FROM gig_skill_required gsr WHERE gsr.gig_id = g.gig_id AND gsr.skill_id = ?)';
+            $params[] = $skill;
+        }
+        if ($search) {
+            $where[] = '(g.title LIKE ? OR g.description LIKE ? OR u.name LIKE ? OR u.department LIKE ?)';
+            $params[] = "%{$search}%";
+            $params[] = "%{$search}%";
+            $params[] = "%{$search}%";
+            $params[] = "%{$search}%";
+        }
+        $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+        $sql = "SELECT g.gig_id, g.title, g.description, g.budget, DATE_FORMAT(g.deadline, '%b %d, %Y') deadline, g.status, g.created_at, u.user_id client_id, u.name client_name, u.department, COUNT(DISTINCT b.bid_id) bid_count, GROUP_CONCAT(DISTINCT s.skill_name ORDER BY s.skill_name SEPARATOR ', ') skills FROM gigs g JOIN users u ON u.user_id = g.client_id LEFT JOIN bids b ON b.gig_id = g.gig_id LEFT JOIN gig_skill_required gsr ON gsr.gig_id = g.gig_id LEFT JOIN skills s ON s.skill_id = gsr.skill_id {$whereClause} GROUP BY g.gig_id ORDER BY g.created_at DESC";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $gigs = $stmt->fetchAll();
         $skills = $pdo->query('SELECT skill_id, skill_name, category FROM skills ORDER BY category, skill_name')->fetchAll();
         $stats = $pdo->query("SELECT COUNT(*) total, SUM(status = 'Open') open_count, SUM(status = 'Completed') completed_count, ROUND(SUM(status = 'Completed') / NULLIF(COUNT(*), 0) * 100) completion_rate FROM gigs")->fetch();
         respond(['gigs' => $gigs, 'skills' => $skills, 'stats' => $stats, 'user_id' => $userId]);

@@ -70,13 +70,6 @@ type Review = {
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://campusgigs.infy.click/api";
 
-const demoUsers: User[] = [
-  { user_id: 1, name: "Aisha Rahman", email: "aisha@campus.edu", department: "Computer Science", batch: 2026, role_flag: "student", avatar_color: "coral" },
-  { user_id: 2, name: "Rafi Hasan", email: "rafi@campus.edu", department: "Electrical Engineering", batch: 2027, role_flag: "student", avatar_color: "blue" },
-  { user_id: 3, name: "Nadia Karim", email: "nadia@campus.edu", department: "Business Administration", batch: 2026, role_flag: "student", avatar_color: "mint" },
-  { user_id: 4, name: "CampusGigs Admin", email: "admin@campus.edu", department: "Administration", batch: 2026, role_flag: "admin", avatar_color: "navy" },
-];
-
 const demoSkills: Skill[] = [
   { skill_id: 1, skill_name: "Web Development", category: "Technology" },
   { skill_id: 2, skill_name: "Graphic Design", category: "Creative" },
@@ -115,9 +108,8 @@ export default function Home() {
   const [rating, setRating] = useState(5);
   const [notice, setNotice] = useState("");
   const [connected, setConnected] = useState(false);
-  const [switcherOpen, setSwitcherOpen] = useState(false);
 
-  // Load user session on mount
+  // Restore authenticated session from localStorage
   useEffect(() => {
     try {
       const stored = localStorage.getItem("campusgigs_user");
@@ -176,16 +168,17 @@ export default function Home() {
         }
       }
     } catch {
-      // Fallback
+      // Ignored
     }
   }
 
+  // Refetch when status, skillFilter, or search query changes
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadGigs();
-    }, 0);
+    }, 250);
     return () => window.clearTimeout(timer);
-  }, [status, skillFilter]);
+  }, [status, skillFilter, search]);
 
   useEffect(() => {
     if (view === "My gigs" || view === "My bids" || view === "Admin") {
@@ -207,13 +200,13 @@ export default function Home() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-      showNotice(data.message ?? "Action completed");
+      showNotice(data.message ?? "Action completed successfully");
       void loadGigs();
       void loadUserData();
       return data;
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : "Action completed in demo mode";
-      showNotice(connected ? errMsg : "Action processed in local demo mode.");
+      const errMsg = err instanceof Error ? err.message : "Action performed in local mode";
+      showNotice(connected ? errMsg : "Action completed in local demo mode.");
       return null;
     }
   }
@@ -240,15 +233,25 @@ export default function Home() {
       return;
     }
     const form = new FormData(event.currentTarget);
+    const selectedSkillIds = form.getAll("skills").map(Number).filter((id) => id > 0);
+
+    if (selectedSkillIds.length === 0) {
+      showNotice("Please select at least one required skill.");
+      return;
+    }
+
     const result = await request("create_gig", {
       title: form.get("title"),
       description: form.get("description"),
       budget: form.get("budget"),
       deadline: form.get("deadline"),
-      skills: [Number(form.get("skill"))],
+      skills: selectedSkillIds,
     });
+
     if (result) {
       setModal(null);
+      setView("Discover");
+      setStatus("Open");
       void loadGigs();
     }
   }
@@ -280,12 +283,6 @@ export default function Home() {
       handleSetUser(result.user);
       setModal(null);
       showNotice(`Welcome back, ${result.user.name}!`);
-    } else if (!connected) {
-      // Demo fallback login matching email
-      const matched = demoUsers.find((u) => u.email === form.get("email")) || demoUsers[0];
-      handleSetUser(matched);
-      setModal(null);
-      showNotice(`Logged in as ${matched.name} (Demo Mode)`);
     }
   }
 
@@ -302,20 +299,7 @@ export default function Home() {
     if (result && result.user) {
       handleSetUser(result.user);
       setModal(null);
-      showNotice(`Account registered! Welcome to CampusGigs, ${result.user.name}!`);
-    } else if (!connected) {
-      const newUser: User = {
-        user_id: Date.now(),
-        name: String(form.get("name")),
-        email: String(form.get("email")),
-        department: String(form.get("department")),
-        batch: Number(form.get("batch")),
-        role_flag: "student",
-        avatar_color: "coral",
-      };
-      handleSetUser(newUser);
-      setModal(null);
-      showNotice(`Welcome to CampusGigs, ${newUser.name}!`);
+      showNotice(`Account registered! Welcome, ${result.user.name}!`);
     }
   }
 
@@ -362,8 +346,9 @@ export default function Home() {
         .slice(0, 2)
     : "G";
 
-  // Multi-field instant client search filter
+  // Search filtering matching title, description, skills, student name, or department
   const filteredGigs = gigs.filter((gig) => {
+    if (status !== "All" && gig.status !== status) return false;
     const query = search.trim().toLowerCase();
     if (!query) return true;
     const titleMatch = gig.title.toLowerCase().includes(query);
@@ -418,8 +403,8 @@ export default function Home() {
         {user ? (
           <div className="campus-side-footer">
             <div className={`campus-avatar ${user.avatar_color}`}>{initials}</div>
-            <div>
-              <strong>{user.name}</strong>
+            <div style={{ overflow: "hidden" }}>
+              <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user.name}</strong>
               <small>{user.department}</small>
             </div>
             <button
@@ -427,7 +412,7 @@ export default function Home() {
                 handleSetUser(null);
                 showNotice("Logged out successfully.");
               }}
-              style={{ color: "#b91c1c", fontWeight: 700, fontSize: "10px", padding: "4px 6px" }}
+              style={{ color: "#b91c1c", fontWeight: 700, fontSize: "10px", padding: "4px 8px" }}
               title="Log Out"
             >
               Exit
@@ -468,54 +453,23 @@ export default function Home() {
 
           <div className="header-actions">
             {user ? (
-              <div className="user-switcher">
-                <button className="header-user" onClick={() => setSwitcherOpen(!switcherOpen)}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div className="header-user">
                   <span className={`campus-avatar ${user.avatar_color}`}>{initials}</span>
                   <span>
                     <strong>{user.name}</strong>
-                    <small>{user.role_flag === "admin" ? "System Admin" : "Student account"}</small>
+                    <small>{user.role_flag === "admin" ? "System Admin" : user.department}</small>
                   </span>
-                  <b>⌄</b>
+                </div>
+                <button
+                  className="action-btn danger"
+                  onClick={() => {
+                    handleSetUser(null);
+                    showNotice("Logged out successfully.");
+                  }}
+                >
+                  Log Out
                 </button>
-
-                {switcherOpen && (
-                  <div className="switcher-menu">
-                    <div className="switcher-header">SWITCH TEST ACCOUNT</div>
-                    {demoUsers.map((u) => (
-                      <button
-                        key={u.user_id}
-                        className={u.user_id === user.user_id ? "switcher-item active" : "switcher-item"}
-                        onClick={() => {
-                          handleSetUser(u);
-                          setSwitcherOpen(false);
-                          showNotice(`Switched active user to ${u.name}`);
-                        }}
-                      >
-                        <span className={`campus-avatar ${u.avatar_color}`}>{u.name.slice(0, 2)}</span>
-                        <div>
-                          <strong>{u.name}</strong>
-                          <small>{u.department}</small>
-                        </div>
-                        <span className={`role-badge ${u.role_flag}`}>{u.role_flag}</span>
-                      </button>
-                    ))}
-
-                    <button
-                      className="switcher-item logout-item"
-                      onClick={() => {
-                        handleSetUser(null);
-                        setSwitcherOpen(false);
-                        showNotice("Logged out.");
-                      }}
-                    >
-                      <span>🚪</span>
-                      <div>
-                        <strong>Log Out</strong>
-                        <small>Exit current account</small>
-                      </div>
-                    </button>
-                  </div>
-                )}
               </div>
             ) : (
               <div style={{ display: "flex", gap: "10px" }}>
@@ -550,7 +504,7 @@ export default function Home() {
               <p className="overline">
                 CAMPUS MARKETPLACE{" "}
                 <span className={connected ? "online" : "offline"}>
-                  ● {connected ? "LIVE API (CONNECTED)" : "LOCAL DEMO MODE"}
+                  ● {connected ? "LIVE API CONNECTED" : "LOCAL DEMO MODE"}
                 </span>
               </p>
               <h1>
@@ -598,7 +552,7 @@ export default function Home() {
 
               <div className="browse-controls">
                 <div className="status-tabs">
-                  {["Open", "In Progress", "Completed"].map((item) => (
+                  {["Open", "In Progress", "Completed", "All"].map((item) => (
                     <button key={item} className={status === item ? "selected" : ""} onClick={() => setStatus(item)}>
                       {item}
                     </button>
@@ -674,7 +628,7 @@ export default function Home() {
                   <div className="empty-state">
                     <span>⌁</span>
                     <h3>No gigs found matching criteria</h3>
-                    <p>Try clearing filters or search for another skill.</p>
+                    <p>Try clearing filters or search for another keyword.</p>
                   </div>
                 )}
               </div>
@@ -714,7 +668,7 @@ export default function Home() {
           <footer className="campus-footer">
             <span>
               <i className={connected ? "footer-dot live" : "footer-dot"} />{" "}
-              {connected ? `Connected to Live API (${API})` : "Demo Mode Active"}
+              {connected ? `Connected to Live API (${API})` : "Local Mode Active"}
             </span>
             <span>Built for CSE-311 · CampusGigs</span>
           </footer>
@@ -796,6 +750,7 @@ export default function Home() {
               Gig title
               <input name="title" required placeholder="What do you need help with?" />
             </label>
+
             <label>
               Description
               <textarea name="description" required placeholder="Describe the work, deliverables, and context..." rows={4} />
@@ -813,18 +768,19 @@ export default function Home() {
             </div>
 
             <label>
-              Required skill
-              <select name="skill" required>
+              Required Skills (Select one or more)
+              <div className="skills-checkbox-grid">
                 {skills.map((skill) => (
-                  <option value={skill.skill_id} key={skill.skill_id}>
-                    {skill.skill_name}
-                  </option>
+                  <label key={skill.skill_id} className="skill-checkbox-item">
+                    <input type="checkbox" name="skills" value={skill.skill_id} />
+                    <span>{skill.skill_name}</span>
+                  </label>
                 ))}
-              </select>
+              </div>
             </label>
 
-            <button className="modal-submit">
-              Publish gig <span>→</span>
+            <button className="modal-submit primary">
+              Publish Gig <span>→</span>
             </button>
           </form>
         </Modal>
@@ -846,7 +802,7 @@ export default function Home() {
               <textarea name="message" required rows={5} placeholder="Introduce yourself and explain why you're a good fit..." />
             </label>
 
-            <button className="modal-submit">
+            <button className="modal-submit primary">
               Submit proposal <span>→</span>
             </button>
           </form>
@@ -879,7 +835,7 @@ export default function Home() {
               <textarea name="comment" required rows={4} placeholder="Share how the collaboration went..." />
             </label>
 
-            <button className="modal-submit">
+            <button className="modal-submit primary">
               Publish Review <span>→</span>
             </button>
           </form>
