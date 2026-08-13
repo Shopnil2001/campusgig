@@ -1,0 +1,10 @@
+Options -Indexes
+
+DirectoryIndex index.php
+
+# Block public access to .env and hidden configuration files
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
