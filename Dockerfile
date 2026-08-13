@@ -9,7 +9,7 @@ RUN docker-php-ext-install pdo pdo_mysql
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy PHP backend API files (handles both repo-root context and backend-subfolder context)
+# Copy PHP backend API files
 COPY backend/api/ /var/www/html/
 
 # Ensure permissions
