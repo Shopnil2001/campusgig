@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { FormEvent, useEffect, useState } from "react";
 
 type User = {
@@ -116,8 +118,11 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [connected, setConnected] = useState(false);
 
+  const [mounted, setMounted] = useState(false);
+
   // Restore session
   useEffect(() => {
+    setMounted(true);
     try {
       const stored = localStorage.getItem("campusgigs_user");
       if (stored) {
