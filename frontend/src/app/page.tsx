@@ -111,9 +111,10 @@ export default function Home() {
   const [gigReviews, setGigReviews] = useState<Review[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [topFreelancers, setTopFreelancers] = useState<TopFreelancer[]>([]);
-  const [modal, setModal] = useState<"post" | "bid" | "profile" | "review" | "dispute" | "login" | "register" | null>(null);
+  const [modal, setModal] = useState<"post" | "edit" | "bid" | "profile" | "review" | "dispute" | "login" | "register" | null>(null);
   const [reviewGig, setReviewGig] = useState<Gig | null>(null);
   const [disputeGig, setDisputeGig] = useState<Gig | null>(null);
+  const [editingGig, setEditingGig] = useState<Gig | null>(null);
   const [rating, setRating] = useState(5);
   const [notice, setNotice] = useState("");
   const [connected, setConnected] = useState(false);
@@ -274,6 +275,53 @@ export default function Home() {
       setModal(null);
       setView("Discover");
       setStatus("Open");
+      void loadGigs();
+    }
+  }
+
+  async function submitEditGig(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user || !editingGig) return;
+    const form = new FormData(event.currentTarget);
+    const selectedSkillIds = form.getAll("skills").map(Number).filter((id) => id > 0);
+
+    const result = await request("edit_gig", {
+      gig_id: editingGig.gig_id,
+      user_role: user.role_flag,
+      title: form.get("title"),
+      description: form.get("description"),
+      budget: form.get("budget"),
+      deadline: form.get("deadline"),
+      skills: selectedSkillIds,
+    });
+
+    if (result) {
+      setModal(null);
+      setEditingGig(null);
+      void loadGigs();
+    }
+  }
+
+  async function handleDeleteGig(gigId: number) {
+    if (!window.confirm("Are you sure you want to delete this gig? This action cannot be undone.")) return;
+    const result = await request("delete_gig", {
+      gig_id: gigId,
+      user_role: user?.role_flag,
+    });
+    if (result) {
+      setSelectedGig(null);
+      void loadGigs();
+    }
+  }
+
+  async function handleDeleteBid(bidId: number) {
+    if (!window.confirm("Are you sure you want to withdraw this proposal?")) return;
+    const result = await request("delete_bid", {
+      bid_id: bidId,
+      user_role: user?.role_flag,
+    });
+    if (result) {
+      void loadUserData();
       void loadGigs();
     }
   }
@@ -711,6 +759,11 @@ export default function Home() {
             <MyGigs
               gigs={gigs.filter((gig) => gig.client_id === user.user_id)}
               onOpen={openGig}
+              onEdit={(gig) => {
+                setEditingGig(gig);
+                setModal("edit");
+              }}
+              onDelete={(gigId) => void handleDeleteGig(gigId)}
               onReview={(gig) => {
                 setReviewGig(gig);
                 setModal("review");
@@ -723,7 +776,7 @@ export default function Home() {
             />
           )}
 
-          {view === "My bids" && user && <MyBids bids={myBids} onNotice={showNotice} />}
+          {view === "My bids" && user && <MyBids bids={myBids} onNotice={showNotice} onDeleteBid={(bidId) => void handleDeleteBid(bidId)} />}
 
           {view === "Admin" && user && user.role_flag === "admin" && (
             <AdminPanel
@@ -858,6 +911,54 @@ export default function Home() {
         </Modal>
       )}
 
+      {modal === "edit" && editingGig && (
+        <Modal title="Edit Gig" close={() => { setModal(null); setEditingGig(null); }}>
+          <form className="modal-form" onSubmit={submitEditGig}>
+            <label>
+              Gig title
+              <input name="title" required defaultValue={editingGig.title} />
+            </label>
+
+            <label>
+              Description
+              <textarea name="description" required defaultValue={editingGig.description} rows={4} />
+            </label>
+
+            <div className="form-split">
+              <label>
+                Budget (USD)
+                <input name="budget" type="number" min="1" required defaultValue={editingGig.budget} />
+              </label>
+              <label>
+                Deadline
+                <input name="deadline" type="date" required />
+              </label>
+            </div>
+
+            <label>
+              Required Skills (Select one or more)
+              <div className="skills-checkbox-grid">
+                {skills.map((skill) => (
+                  <label key={skill.skill_id} className="skill-checkbox-item">
+                    <input
+                      type="checkbox"
+                      name="skills"
+                      value={skill.skill_id}
+                      defaultChecked={(editingGig.skills || "").toLowerCase().includes(skill.skill_name.toLowerCase())}
+                    />
+                    <span>{skill.skill_name}</span>
+                  </label>
+                ))}
+              </div>
+            </label>
+
+            <button className="modal-submit primary">
+              Save Changes <span>→</span>
+            </button>
+          </form>
+        </Modal>
+      )}
+
       {modal === "bid" && selectedGig && (
         <Modal title="Send a proposal" close={() => setModal(null)}>
           <p className="modal-context">
@@ -964,12 +1065,16 @@ export default function Home() {
 function MyGigs({
   gigs,
   onOpen,
+  onEdit,
+  onDelete,
   onReview,
   onDispute,
   request,
 }: {
   gigs: Gig[];
   onOpen: (gig: Gig) => void;
+  onEdit: (gig: Gig) => void;
+  onDelete: (gigId: number) => void;
   onReview: (gig: Gig) => void;
   onDispute: (gig: Gig) => void;
   request: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
@@ -995,6 +1100,21 @@ function MyGigs({
               <em>{gig.status}</em>
 
               <div style={{ display: "flex", gap: "6px" }}>
+                <button
+                  className="action-btn"
+                  onClick={() => onEdit(gig)}
+                  style={{ background: "#f3f4f6", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
+                >
+                  ✏️ Edit
+                </button>
+                <button
+                  className="action-btn danger"
+                  onClick={() => onDelete(gig.gig_id)}
+                  style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
+                >
+                  🗑️ Delete
+                </button>
+
                 {gig.status === "In Progress" && (
                   <button className="action-btn secondary" onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Completed" })}>
                     Complete
@@ -1021,7 +1141,15 @@ function MyGigs({
   );
 }
 
-function MyBids({ bids, onNotice }: { bids: Bid[]; onNotice: (message: string) => void }) {
+function MyBids({
+  bids,
+  onNotice,
+  onDeleteBid,
+}: {
+  bids: Bid[];
+  onNotice: (message: string) => void;
+  onDeleteBid: (bidId: number) => void;
+}) {
   return (
     <div className="subpage">
       <p className="overline">FREELANCER WORKSPACE</p>
@@ -1045,7 +1173,16 @@ function MyBids({ bids, onNotice }: { bids: Bid[]; onNotice: (message: string) =
                 <small>Client: {bid.client_name || "Campus Client"}</small>
               </div>
               <b>${bid.proposed_price}</b>
-              <em className={`proposal-${bid.status.toLowerCase()}`}>{bid.status}</em>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <em className={`proposal-${bid.status.toLowerCase()}`}>{bid.status}</em>
+                <button
+                  style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 700, cursor: "pointer" }}
+                  onClick={() => onDeleteBid(bid.bid_id)}
+                  title="Withdraw proposal"
+                >
+                  Withdraw
+                </button>
+              </div>
             </div>
           ))
         ) : (

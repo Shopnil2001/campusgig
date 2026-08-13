@@ -147,6 +147,65 @@ try {
         respond(['message' => 'Gig posted successfully.', 'gig_id' => $gigId], 201);
     }
 
+    if ($action === 'edit_gig' && $method === 'POST') {
+        requireFields($body, ['gig_id', 'title', 'description', 'budget', 'deadline']);
+        $gigId = (int) $body['gig_id'];
+        $stmt = $pdo->prepare('SELECT client_id FROM gigs WHERE gig_id = ?');
+        $stmt->execute([$gigId]);
+        $gig = $stmt->fetch();
+        if (!$gig || ((int)$gig['client_id'] !== $userId && ($body['user_role'] ?? '') !== 'admin')) {
+            respond(['error' => 'You are not authorized to edit this gig.'], 403);
+        }
+        $deadline = trim((string)($body['deadline'] ?? ''));
+        if ($deadline !== '') {
+            $ts = strtotime($deadline);
+            if ($ts !== false) {
+                $deadline = date('Y-m-d', $ts);
+            }
+        }
+        $pdo->beginTransaction();
+        $updateStmt = $pdo->prepare('UPDATE gigs SET title = ?, description = ?, budget = ?, deadline = ? WHERE gig_id = ?');
+        $updateStmt->execute([$body['title'], $body['description'], $body['budget'], $deadline, $gigId]);
+
+        if (isset($body['skills']) && is_array($body['skills'])) {
+            $pdo->prepare('DELETE FROM gig_skill_required WHERE gig_id = ?')->execute([$gigId]);
+            $skillStmt = $pdo->prepare('INSERT INTO gig_skill_required (gig_id, skill_id) VALUES (?, ?)');
+            foreach ($body['skills'] as $skillId) {
+                if ((int)$skillId > 0) {
+                    $skillStmt->execute([$gigId, (int) $skillId]);
+                }
+            }
+        }
+        $pdo->commit();
+        respond(['message' => 'Gig updated successfully.']);
+    }
+
+    if ($action === 'delete_gig' && $method === 'POST') {
+        requireFields($body, ['gig_id']);
+        $gigId = (int) $body['gig_id'];
+        $stmt = $pdo->prepare('SELECT client_id FROM gigs WHERE gig_id = ?');
+        $stmt->execute([$gigId]);
+        $gig = $stmt->fetch();
+        if (!$gig || ((int)$gig['client_id'] !== $userId && ($body['user_role'] ?? '') !== 'admin')) {
+            respond(['error' => 'You are not authorized to delete this gig.'], 403);
+        }
+        $pdo->prepare('DELETE FROM gigs WHERE gig_id = ?')->execute([$gigId]);
+        respond(['message' => 'Gig deleted successfully.']);
+    }
+
+    if ($action === 'delete_bid' && $method === 'POST') {
+        requireFields($body, ['bid_id']);
+        $bidId = (int) $body['bid_id'];
+        $stmt = $pdo->prepare('SELECT freelancer_id FROM bids WHERE bid_id = ?');
+        $stmt->execute([$bidId]);
+        $bid = $stmt->fetch();
+        if (!$bid || ((int)$bid['freelancer_id'] !== $userId && ($body['user_role'] ?? '') !== 'admin')) {
+            respond(['error' => 'You are not authorized to withdraw this bid.'], 403);
+        }
+        $pdo->prepare('DELETE FROM bids WHERE bid_id = ?')->execute([$bidId]);
+        respond(['message' => 'Proposal withdrawn successfully.']);
+    }
+
     if ($action === 'create_bid' && $method === 'POST') {
         requireFields($body, ['gig_id', 'proposed_price', 'message']); $stmt = $pdo->prepare("INSERT INTO bids (gig_id, freelancer_id, proposed_price, message) SELECT ?, ?, ?, ? FROM gigs WHERE gig_id = ? AND status = 'Open' AND client_id <> ?"); $stmt->execute([(int) $body['gig_id'], $userId, $body['proposed_price'], $body['message'], (int) $body['gig_id'], $userId]); if (!$stmt->rowCount()) respond(['error' => 'This gig is unavailable or belongs to you.'], 422); respond(['message' => 'Proposal submitted successfully.'], 201);
     }
