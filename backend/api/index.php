@@ -99,9 +99,8 @@ try {
             $params[] = $skill;
         }
         if ($search) {
-            $where[] = '(LOWER(g.title) LIKE LOWER(?) OR LOWER(g.description) LIKE LOWER(?) OR LOWER(u.name) LIKE LOWER(?) OR LOWER(u.department) LIKE LOWER(?) OR LOWER(s.skill_name) LIKE LOWER(?))';
-            $searchPattern = "%{$search}%";
-            $params[] = $searchPattern;
+            $where[] = '(LOWER(g.title) LIKE ? OR LOWER(g.description) LIKE ? OR LOWER(u.name) LIKE ? OR LOWER(u.department) LIKE ?)';
+            $searchPattern = '%' . strtolower(trim((string)$search)) . '%';
             $params[] = $searchPattern;
             $params[] = $searchPattern;
             $params[] = $searchPattern;

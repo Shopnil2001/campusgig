@@ -144,9 +144,7 @@ export default function Home() {
 
   async function loadGigs() {
     try {
-      const response = await fetch(
-        `${API}/index.php?action=dashboard&status=All&search=${encodeURIComponent(search)}&skill_id=${skillFilter}`
-      );
+      const response = await fetch(`${API}/index.php?action=dashboard&status=All`);
       if (!response.ok) throw new Error();
       const data = await response.json();
       if (Array.isArray(data.gigs)) setGigs(data.gigs);
@@ -164,6 +162,12 @@ export default function Home() {
       // Retain previous connection state to prevent dropping into demo mode during slow network responses
     }
   }
+
+  useEffect(() => {
+    if (mounted) {
+      void loadGigs();
+    }
+  }, [mounted]);
 
   async function loadUserData() {
     if (!connected || !user) return;
