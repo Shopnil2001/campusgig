@@ -2,7 +2,52 @@
 
 export const dynamic = "force-dynamic";
 
-import { FormEvent, useEffect, useState } from "react";
+import React, { Component, FormEvent, ReactNode, useEffect, useState } from "react";
+
+// Robust Error Boundary to guarantee Vercel / Client never crashes into 'page not available'
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("CampusGigs App Error caught:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: "60px 20px", textAlign: "center", maxWidth: "600px", margin: "40px auto", background: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", boxShadow: "0 10px 25px rgba(0,0,0,0.05)" }}>
+          <span style={{ fontSize: "42px", display: "block", marginBottom: "12px" }}>⚠️</span>
+          <h2 style={{ fontSize: "20px", fontWeight: 800, color: "#0f172a", margin: "0 0 8px" }}>Workspace refreshed</h2>
+          <p style={{ fontSize: "13px", color: "#64748b", margin: "0 0 20px" }}>An unexpected render issue occurred while loading this view.</p>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false });
+              window.location.reload();
+            }}
+            style={{ background: "#f97316", color: "#fff", border: 0, padding: "10px 20px", borderRadius: "8px", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 type User = {
   user_id: number;
@@ -12,6 +57,8 @@ type User = {
   batch: number;
   role_flag: "student" | "admin";
   avatar_color: string;
+  skills?: Skill[];
+  average_rating?: number;
 };
 
 type Skill = { skill_id: number; skill_name: string; category: string };
@@ -28,6 +75,8 @@ type Gig = {
   department: string;
   bid_count: number;
   skills: string | null;
+  accepted_freelancer_id?: number;
+  accepted_freelancer_name?: string;
 };
 
 type Bid = {
@@ -41,7 +90,22 @@ type Bid = {
   status: string;
   avatar_color: string;
   gig_title?: string;
+  gig_budget?: string;
+  gig_status?: string;
   client_name?: string;
+};
+
+type Transaction = {
+  transaction_id: number;
+  gig_id: number;
+  amount: string;
+  payment_status: "Pending" | "Paid" | "Refunded";
+  completed_at: string;
+  gig_title: string;
+  client_name: string;
+  client_id: number;
+  freelancer_name?: string;
+  freelancer_id?: number;
 };
 
 type Dispute = {
@@ -96,10 +160,27 @@ const demoGigs: Gig[] = [
   { gig_id: 3, title: "Photograph our campus society event", description: "Two hours of event coverage with 30 edited photos delivered within one week.", budget: "75.00", deadline: "Aug 15, 2026", status: "In Progress", client_id: 3, client_name: "Nadia Karim", department: "Business Administration", bid_count: 1, skills: "Photography" },
 ];
 
+function getInitials(name?: string): string {
+  if (!name) return "CG";
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+function safeLower(str?: string): string {
+  return (str || "").toLowerCase();
+}
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [gigs, setGigs] = useState<Gig[]>(demoGigs);
+  const [myGigs, setMyGigs] = useState<Gig[]>([]);
   const [myBids, setMyBids] = useState<Bid[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [skills, setSkills] = useState<Skill[]>(demoSkills);
   const [stats, setStats] = useState({ total: 12, open_count: 8, completed_count: 4, completion_rate: 33 });
   const [view, setView] = useState("Discover");
@@ -111,7 +192,7 @@ export default function Home() {
   const [gigReviews, setGigReviews] = useState<Review[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [topFreelancers, setTopFreelancers] = useState<TopFreelancer[]>([]);
-  const [modal, setModal] = useState<"post" | "edit" | "bid" | "profile" | "review" | "dispute" | "login" | "register" | null>(null);
+  const [modal, setModal] = useState<"post" | "edit" | "bid" | "profile" | "skills" | "review" | "dispute" | "login" | "register" | null>(null);
   const [reviewGig, setReviewGig] = useState<Gig | null>(null);
   const [disputeGig, setDisputeGig] = useState<Gig | null>(null);
   const [editingGig, setEditingGig] = useState<Gig | null>(null);
@@ -176,12 +257,24 @@ export default function Home() {
       const myGigsRes = await fetch(`${API}/index.php?action=my_gigs&user_id=${user.user_id}`);
       if (myGigsRes.ok) {
         const data = await myGigsRes.json();
-        // Do not overwrite marketplace gigs list
+        if (Array.isArray(data.gigs)) setMyGigs(data.gigs);
       }
       const myBidsRes = await fetch(`${API}/index.php?action=my_bids&user_id=${user.user_id}`);
       if (myBidsRes.ok) {
         const data = await myBidsRes.json();
         if (Array.isArray(data.bids)) setMyBids(data.bids);
+      }
+      const txRes = await fetch(`${API}/index.php?action=transactions&user_id=${user.user_id}`);
+      if (txRes.ok) {
+        const data = await txRes.json();
+        if (Array.isArray(data.transactions)) setTransactions(data.transactions);
+      }
+      const meRes = await fetch(`${API}/index.php?action=me&user_id=${user.user_id}`);
+      if (meRes.ok) {
+        const data = await meRes.json();
+        if (data.user) {
+          setUser((prev) => (prev ? { ...prev, ...data.user } : data.user));
+        }
       }
       if (user.role_flag === "admin") {
         const adminRes = await fetch(`${API}/index.php?action=admin&user_id=${user.user_id}`);
@@ -204,13 +297,13 @@ export default function Home() {
   }, [status, skillFilter, search]);
 
   useEffect(() => {
-    if (view === "My gigs" || view === "My bids" || view === "Admin") {
+    if (view === "My gigs" || view === "My bids" || view === "Transactions" || view === "Admin" || view === "Profile") {
       void loadUserData();
     }
   }, [view, user]);
 
   async function request(action: string, body?: Record<string, unknown>) {
-    if (!user && (action === "create_gig" || action === "create_bid" || action === "review" || action === "dispute")) {
+    if (!user && (action === "create_gig" || action === "create_bid" || action === "review" || action === "dispute" || action === "update_skills")) {
       setModal("login");
       showNotice("Please sign in to perform this action.");
       return null;
@@ -242,6 +335,9 @@ export default function Home() {
       if (response.ok) {
         setBids(data.bids || []);
         setGigReviews(data.reviews || []);
+        if (data.gig) {
+          setSelectedGig(data.gig);
+        }
       }
     } catch {
       setBids([]);
@@ -407,15 +503,38 @@ export default function Home() {
     event.preventDefault();
     if (!reviewGig || !user) return;
     const form = new FormData(event.currentTarget);
+    const targetRevieweeId =
+      user.user_id === reviewGig.client_id
+        ? (reviewGig.accepted_freelancer_id || 0)
+        : reviewGig.client_id;
+
     const result = await request("review", {
       gig_id: reviewGig.gig_id,
-      reviewee_id: reviewGig.client_id === user.user_id ? 3 : reviewGig.client_id,
+      reviewee_id: targetRevieweeId,
       rating: rating,
       comment: form.get("comment"),
     });
     if (result) {
       setModal(null);
       setReviewGig(null);
+      void loadUserData();
+    }
+  }
+
+  async function submitSkills(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!user) return;
+    const form = new FormData(event.currentTarget);
+    const selectedSkillIds = form.getAll("skills").map(Number).filter((id) => id > 0);
+
+    const result = await request("update_skills", {
+      skills: selectedSkillIds,
+    });
+    if (result) {
+      const selectedSkillObjects = skills.filter((s) => selectedSkillIds.includes(s.skill_id));
+      const updatedUser = { ...user, skills: selectedSkillObjects };
+      handleSetUser(updatedUser);
+      setModal(null);
     }
   }
 
@@ -504,6 +623,10 @@ export default function Home() {
 
               <button className={view === "My bids" ? "campus-nav-link active" : "campus-nav-link"} onClick={() => setView("My bids")}>
                 <span>◇</span> My proposals
+              </button>
+
+              <button className={view === "Transactions" ? "campus-nav-link active" : "campus-nav-link"} onClick={() => setView("Transactions")}>
+                <span>💳</span> Transactions <b>{transactions.length}</b>
               </button>
 
               {user.role_flag === "admin" && (
@@ -757,7 +880,7 @@ export default function Home() {
 
           {view === "My gigs" && user && (
             <MyGigs
-              gigs={gigs.filter((gig) => gig.client_id === user.user_id)}
+              gigs={myGigs.length ? myGigs : gigs.filter((gig) => gig.client_id === user.user_id)}
               onOpen={openGig}
               onEdit={(gig) => {
                 setEditingGig(gig);
@@ -776,7 +899,37 @@ export default function Home() {
             />
           )}
 
-          {view === "My bids" && user && <MyBids bids={myBids} onNotice={showNotice} onDeleteBid={(bidId) => void handleDeleteBid(bidId)} />}
+          {view === "My bids" && user && (
+            <MyBids
+              bids={myBids}
+              onNotice={showNotice}
+              onDeleteBid={(bidId) => void handleDeleteBid(bidId)}
+              onDeliver={async (gigId) => {
+                await request("update_status", { gig_id: gigId, status: "Submitted" });
+              }}
+              onReview={(bid) => {
+                setReviewGig({
+                  gig_id: bid.gig_id,
+                  title: bid.gig_title || `Gig #${bid.gig_id}`,
+                  client_id: 0,
+                  accepted_freelancer_id: user.user_id,
+                  description: "",
+                  budget: bid.proposed_price,
+                  deadline: "",
+                  status: "Completed",
+                  client_name: bid.client_name || "Client",
+                  department: "",
+                  bid_count: 0,
+                  skills: null,
+                });
+                setModal("review");
+              }}
+            />
+          )}
+
+          {view === "Transactions" && user && (
+            <TransactionsView transactions={transactions} user={user} />
+          )}
 
           {view === "Admin" && user && user.role_flag === "admin" && (
             <AdminPanel
@@ -788,7 +941,13 @@ export default function Home() {
             />
           )}
 
-          {view === "Profile" && user && <Profile user={user} skills={skills} />}
+          {view === "Profile" && user && (
+            <Profile
+              user={user}
+              skills={user.skills && user.skills.length ? user.skills : skills.slice(0, 3)}
+              onEditSkills={() => setModal("skills")}
+            />
+          )}
 
           <footer className="campus-footer">
             <span>
@@ -1034,9 +1193,33 @@ export default function Home() {
         </Modal>
       )}
 
+      {modal === "skills" && user && (
+        <Modal title="Manage Your Skills" close={() => setModal(null)}>
+          <form className="modal-form" onSubmit={submitSkills}>
+            <p className="modal-context">Select the skill categories you offer to clients on campus.</p>
+            <div className="skills-checkbox-grid">
+              {skills.map((skill) => (
+                <label key={skill.skill_id} className="skill-checkbox-item">
+                  <input
+                    type="checkbox"
+                    name="skills"
+                    value={skill.skill_id}
+                    defaultChecked={user.skills?.some((s) => s.skill_id === skill.skill_id)}
+                  />
+                  <span>{skill.skill_name}</span>
+                </label>
+              ))}
+            </div>
+            <button className="modal-submit primary">
+              Save Skills <span>→</span>
+            </button>
+          </form>
+        </Modal>
+      )}
+
       {modal === "profile" && user && (
         <Modal title="Your student profile" close={() => setModal(null)}>
-          <Profile user={user} skills={skills} compact />
+          <Profile user={user} skills={user.skills && user.skills.length ? user.skills : skills.slice(0, 3)} compact />
         </Modal>
       )}
 
@@ -1094,19 +1277,32 @@ function MyGigs({
                 <strong>{gig.title}</strong>
                 <small>
                   {gig.bid_count} proposals · due {gig.deadline}
+                  {gig.accepted_freelancer_name ? ` · Freelancer: ${gig.accepted_freelancer_name}` : ""}
                 </small>
               </div>
               <b>${gig.budget}</b>
               <em>{gig.status}</em>
 
               <div style={{ display: "flex", gap: "6px" }}>
-                <button
-                  className="action-btn"
-                  onClick={() => onEdit(gig)}
-                  style={{ background: "#f3f4f6", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
-                >
-                  ✏️ Edit
-                </button>
+                {gig.status === "Open" && (
+                  <>
+                    <button
+                      className="action-btn"
+                      onClick={() => onEdit(gig)}
+                      style={{ background: "#f3f4f6", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
+                    >
+                      ✏️ Edit
+                    </button>
+                    <button
+                      className="action-btn danger"
+                      onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Cancelled" })}
+                      style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+
                 <button
                   className="action-btn danger"
                   onClick={() => onDelete(gig.gig_id)}
@@ -1115,17 +1311,17 @@ function MyGigs({
                   🗑️ Delete
                 </button>
 
-                {gig.status === "In Progress" && (
+                {(gig.status === "In Progress" || gig.status === "Submitted") && (
                   <button className="action-btn secondary" onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Completed" })}>
-                    Complete
+                    {gig.status === "Submitted" ? "Approve Delivery & Complete" : "Complete"}
                   </button>
                 )}
                 {gig.status === "Completed" && (
                   <button className="action-btn primary" onClick={() => onReview(gig)}>
-                    Review
+                    Review Freelancer
                   </button>
                 )}
-                {gig.status !== "Completed" && gig.status !== "Disputed" && (
+                {gig.status !== "Completed" && gig.status !== "Disputed" && gig.status !== "Cancelled" && (
                   <button className="action-btn danger" onClick={() => onDispute(gig)}>
                     Dispute
                   </button>
@@ -1145,21 +1341,25 @@ function MyBids({
   bids,
   onNotice,
   onDeleteBid,
+  onDeliver,
+  onReview,
 }: {
   bids: Bid[];
   onNotice: (message: string) => void;
   onDeleteBid: (bidId: number) => void;
+  onDeliver: (gigId: number) => void;
+  onReview: (bid: Bid) => void;
 }) {
   return (
     <div className="subpage">
       <p className="overline">FREELANCER WORKSPACE</p>
       <h2>My proposals</h2>
-      <p className="page-copy">Track the opportunities you&apos;ve applied for.</p>
+      <p className="page-copy">Track the opportunities you&apos;ve applied for and manage active assignments.</p>
 
       <div className="proposal-summary">
-        <strong>{bids.length || 2}</strong>
+        <strong>{bids.length}</strong>
         <span>active proposals</span>
-        <strong>${bids.reduce((sum, b) => sum + Number(b.proposed_price || 0), 0) || 250}</strong>
+        <strong>${bids.reduce((sum, b) => sum + Number(b.proposed_price || 0), 0)}</strong>
         <span>potential earnings</span>
       </div>
 
@@ -1170,18 +1370,46 @@ function MyBids({
               <span className="gig-symbol blue">✦</span>
               <div>
                 <strong>{bid.gig_title || `Gig #${bid.gig_id}`}</strong>
-                <small>Client: {bid.client_name || "Campus Client"}</small>
+                <small>Client: {bid.client_name || "Campus Client"}{bid.gig_status ? ` · Gig Status: ${bid.gig_status}` : ""}</small>
               </div>
               <b>${bid.proposed_price}</b>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <em className={`proposal-${bid.status.toLowerCase()}`}>{bid.status}</em>
-                <button
-                  style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 700, cursor: "pointer" }}
-                  onClick={() => onDeleteBid(bid.bid_id)}
-                  title="Withdraw proposal"
-                >
-                  Withdraw
-                </button>
+
+                {bid.status === "Pending" && (
+                  <button
+                    style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 700, cursor: "pointer" }}
+                    onClick={() => onDeleteBid(bid.bid_id)}
+                    title="Withdraw proposal"
+                  >
+                    Withdraw
+                  </button>
+                )}
+
+                {bid.status === "Accepted" && bid.gig_status === "In Progress" && (
+                  <button
+                    className="action-btn secondary"
+                    onClick={() => onDeliver(bid.gig_id)}
+                    title="Mark work as delivered for client review"
+                  >
+                    🚀 Deliver Work
+                  </button>
+                )}
+
+                {bid.status === "Accepted" && bid.gig_status === "Submitted" && (
+                  <span style={{ fontSize: "9px", fontStyle: "italic", color: "#4f46e5" }}>
+                    ✓ Work Submitted
+                  </span>
+                )}
+
+                {bid.status === "Accepted" && bid.gig_status === "Completed" && (
+                  <button
+                    className="action-btn primary"
+                    onClick={() => onReview(bid)}
+                  >
+                    Review Client
+                  </button>
+                )}
               </div>
             </div>
           ))
@@ -1193,11 +1421,106 @@ function MyBids({
           >
             <span className="gig-symbol blue">✦</span>
             <div>
-              <strong>Build a responsive portfolio landing page</strong>
-              <small>Submitted Aug 09 · Client: Aisha Rahman</small>
+              <strong>No proposals yet</strong>
+              <small>Explore open gigs on the Discover feed and submit your proposals.</small>
             </div>
-            <b>$160</b>
-            <em className="proposal-pending">Pending</em>
+            <b>$0</b>
+            <em className="proposal-pending">None</em>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TransactionsView({
+  transactions,
+  user,
+}: {
+  transactions: Transaction[];
+  user: User;
+}) {
+  const isClient = (t: Transaction) => t.client_id === user.user_id;
+  const totalPaid = transactions
+    .filter(isClient)
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const totalEarned = transactions
+    .filter((t) => !isClient(t))
+    .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
+  return (
+    <div className="subpage">
+      <p className="overline">FINANCIAL LEDGER</p>
+      <h2>Platform Transactions</h2>
+      <p className="page-copy">Track payments made for completed campus gigs and earnings disbursed.</p>
+
+      <div className="tx-summary-grid">
+        <div className="tx-summary-card">
+          <small>Total Transactions</small>
+          <strong>{transactions.length}</strong>
+        </div>
+        <div className="tx-summary-card">
+          <small>Total Payments Made</small>
+          <strong style={{ color: "#dc2626" }}>${totalPaid.toFixed(2)}</strong>
+        </div>
+        <div className="tx-summary-card">
+          <small>Total Earnings Received</small>
+          <strong style={{ color: "#16a34a" }}>${totalEarned.toFixed(2)}</strong>
+        </div>
+      </div>
+
+      <div className="tx-table-wrap">
+        {transactions.length > 0 ? (
+          <table className="tx-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Gig Title</th>
+                <th>Party Details</th>
+                <th>Your Role</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Completed Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map((tx) => {
+                const clientRole = isClient(tx);
+                return (
+                  <tr key={tx.transaction_id}>
+                    <td style={{ fontFamily: "'DM Mono', monospace", color: "var(--muted)" }}>#{tx.transaction_id}</td>
+                    <td>
+                      <strong>{tx.gig_title}</strong>
+                      <small style={{ display: "block", color: "var(--muted)" }}>Gig #{tx.gig_id}</small>
+                    </td>
+                    <td>
+                      <div>Client: <strong>{tx.client_name}</strong></div>
+                      {tx.freelancer_name && <small style={{ color: "var(--muted)" }}>Freelancer: {tx.freelancer_name}</small>}
+                    </td>
+                    <td>
+                      <span style={{ fontSize: "10px", fontWeight: 700, color: clientRole ? "#dc2626" : "#16a34a" }}>
+                        {clientRole ? "Payer (Client)" : "Earner (Freelancer)"}
+                      </span>
+                    </td>
+                    <td>
+                      <strong style={{ fontSize: "12px" }}>${tx.amount}</strong>
+                    </td>
+                    <td>
+                      <span className={`tx-badge ${tx.payment_status.toLowerCase()}`}>
+                        {tx.payment_status}
+                      </span>
+                    </td>
+                    <td style={{ color: "var(--muted)", font: "10px 'DM Mono', monospace" }}>
+                      {tx.completed_at || "Recent"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <div style={{ padding: "40px 20px", textAlign: "center" }}>
+            <p className="muted-copy">No transactions recorded yet. Complete a gig to generate financial records.</p>
           </div>
         )}
       </div>
@@ -1291,7 +1614,18 @@ function AdminPanel({
   );
 }
 
-function Profile({ user, skills, compact = false }: { user: User; skills: Skill[]; compact?: boolean }) {
+function Profile({
+  user,
+  skills,
+  compact = false,
+  onEditSkills,
+}: {
+  user: User;
+  skills: Skill[];
+  compact?: boolean;
+  onEditSkills?: () => void;
+}) {
+  const ratingDisplay = user.average_rating && user.average_rating > 0 ? Number(user.average_rating).toFixed(1) : "5.0";
   return (
     <div className={compact ? "profile-card compact-profile" : "subpage profile-page"}>
       <div className="profile-hero">
@@ -1312,13 +1646,27 @@ function Profile({ user, skills, compact = false }: { user: User; skills: Skill[
           <strong>{user.email}</strong>
         </div>
         <div>
-          <small>Skills</small>
-          <strong>{skills.slice(0, 3).map((s) => s.skill_name).join(" · ")}</strong>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "7px" }}>
+            <small style={{ margin: 0 }}>Registered Skills</small>
+            {onEditSkills && !compact && (
+              <button
+                onClick={onEditSkills}
+                style={{ background: "none", border: 0, color: "var(--coral)", fontSize: "10px", fontWeight: 700, cursor: "pointer", padding: 0 }}
+              >
+                ✏️ Edit Skills
+              </button>
+            )}
+          </div>
+          <strong>
+            {skills && skills.length
+              ? skills.map((s) => s.skill_name).join(" · ")
+              : "No skills configured yet"}
+          </strong>
         </div>
         <div>
-          <small>Reputation</small>
+          <small>Student Reputation</small>
           <strong>
-            4.9 <span className="stars">★★★★★</span>
+            {ratingDisplay} <span className="stars">★★★★★</span>
           </strong>
         </div>
       </div>
@@ -1456,3 +1804,5 @@ function Modal({ title, close, children }: { title: string; close: () => void; c
     </div>
   );
 }
+
+

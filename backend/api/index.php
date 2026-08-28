@@ -68,11 +68,58 @@ try {
         $stmt->execute([$userId]);
         $user = $stmt->fetch();
         if (!$user) respond(['error' => 'User not found.'], 404);
+
+        $skillsStmt = $pdo->prepare('SELECT s.skill_id, s.skill_name, s.category FROM user_skills us JOIN skills s ON s.skill_id = us.skill_id WHERE us.user_id = ? ORDER BY s.category, s.skill_name');
+        $skillsStmt->execute([$userId]);
+        $user['skills'] = $skillsStmt->fetchAll();
+
+        try {
+            $ratingStmt = $pdo->prepare('CALL freelancer_average_rating(?, @avg)');
+            $ratingStmt->execute([$userId]);
+            $ratingStmt->closeCursor();
+            $avgRow = $pdo->query('SELECT @avg AS average')->fetch();
+            $user['average_rating'] = $avgRow && $avgRow['average'] !== null ? (float)$avgRow['average'] : 0.0;
+        } catch (Throwable) {
+            $avgStmt = $pdo->prepare('SELECT ROUND(COALESCE(AVG(rating), 0), 2) AS average FROM reviews WHERE reviewee_id = ?');
+            $avgStmt->execute([$userId]);
+            $user['average_rating'] = (float)($avgStmt->fetchColumn() ?: 0.0);
+        }
         respond(['user' => $user]);
     }
 
+    if ($action === 'update_skills' && $method === 'POST') {
+        requireFields($body, ['skills']);
+        $skillIds = (array) $body['skills'];
+        $pdo->beginTransaction();
+        $pdo->prepare('DELETE FROM user_skills WHERE user_id = ?')->execute([$userId]);
+        $insertStmt = $pdo->prepare('INSERT INTO user_skills (user_id, skill_id) VALUES (?, ?)');
+        foreach ($skillIds as $sid) {
+            if ((int)$sid > 0) {
+                $insertStmt->execute([$userId, (int)$sid]);
+            }
+        }
+        $pdo->commit();
+        respond(['message' => 'Skills updated successfully.']);
+    }
+
+    if ($action === 'transactions') {
+        $userStmt = $pdo->prepare('SELECT role_flag FROM users WHERE user_id = ?');
+        $userStmt->execute([$userId]);
+        $role = $userStmt->fetchColumn();
+
+        if ($role === 'admin') {
+            $sql = "SELECT t.transaction_id, t.gig_id, t.amount, t.payment_status, DATE_FORMAT(t.completed_at, '%b %d, %Y') completed_at, g.title gig_title, uc.name client_name, uc.user_id client_id, uf.name freelancer_name, uf.user_id freelancer_id FROM transactions t JOIN gigs g ON g.gig_id = t.gig_id JOIN users uc ON uc.user_id = g.client_id LEFT JOIN bids b ON b.gig_id = g.gig_id AND b.status = 'Accepted' LEFT JOIN users uf ON uf.user_id = b.freelancer_id ORDER BY t.transaction_id DESC";
+            $stmt = $pdo->query($sql);
+        } else {
+            $sql = "SELECT t.transaction_id, t.gig_id, t.amount, t.payment_status, DATE_FORMAT(t.completed_at, '%b %d, %Y') completed_at, g.title gig_title, uc.name client_name, uc.user_id client_id, uf.name freelancer_name, uf.user_id freelancer_id FROM transactions t JOIN gigs g ON g.gig_id = t.gig_id JOIN users uc ON uc.user_id = g.client_id LEFT JOIN bids b ON b.gig_id = g.gig_id AND b.status = 'Accepted' LEFT JOIN users uf ON uf.user_id = b.freelancer_id WHERE g.client_id = ? OR b.freelancer_id = ? ORDER BY t.transaction_id DESC";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute([$userId, $userId]);
+        }
+        respond(['transactions' => $stmt->fetchAll()]);
+    }
+
     if ($action === 'my_gigs') {
-        $stmt = $pdo->prepare('SELECT g.gig_id, g.title, g.description, g.budget, DATE_FORMAT(g.deadline, "%b %d, %Y") deadline, g.status, g.created_at, COUNT(DISTINCT b.bid_id) bid_count, GROUP_CONCAT(DISTINCT s.skill_name ORDER BY s.skill_name SEPARATOR ", ") skills FROM gigs g LEFT JOIN bids b ON b.gig_id = g.gig_id LEFT JOIN gig_skill_required gsr ON gsr.gig_id = g.gig_id LEFT JOIN skills s ON s.skill_id = gsr.skill_id WHERE g.client_id = ? GROUP BY g.gig_id ORDER BY g.created_at DESC');
+        $stmt = $pdo->prepare('SELECT g.gig_id, g.title, g.description, g.budget, DATE_FORMAT(g.deadline, "%b %d, %Y") deadline, g.status, g.created_at, COUNT(DISTINCT b.bid_id) bid_count, GROUP_CONCAT(DISTINCT s.skill_name ORDER BY s.skill_name SEPARATOR ", ") skills, MAX(CASE WHEN b.status = "Accepted" THEN b.freelancer_id END) accepted_freelancer_id, MAX(CASE WHEN b.status = "Accepted" THEN u.name END) accepted_freelancer_name FROM gigs g LEFT JOIN bids b ON b.gig_id = g.gig_id LEFT JOIN users u ON u.user_id = b.freelancer_id LEFT JOIN gig_skill_required gsr ON gsr.gig_id = g.gig_id LEFT JOIN skills s ON s.skill_id = gsr.skill_id WHERE g.client_id = ? GROUP BY g.gig_id ORDER BY g.created_at DESC');
         $stmt->execute([$userId]);
         respond(['gigs' => $stmt->fetchAll()]);
     }
@@ -117,11 +164,27 @@ try {
     }
 
     if ($action === 'gig' && $method === 'GET') {
-        $gigId = (int) ($_GET['id'] ?? 0); $stmt = $pdo->prepare('SELECT g.*, u.name client_name, u.department, u.batch FROM gigs g JOIN users u ON u.user_id = g.client_id WHERE g.gig_id = ?'); $stmt->execute([$gigId]); $gig = $stmt->fetch();
+        $gigId = (int) ($_GET['id'] ?? 0);
+        $stmt = $pdo->prepare('SELECT g.*, u.name client_name, u.department, u.batch FROM gigs g JOIN users u ON u.user_id = g.client_id WHERE g.gig_id = ?');
+        $stmt->execute([$gigId]);
+        $gig = $stmt->fetch();
         if (!$gig) respond(['error' => 'Gig not found.'], 404);
-        $stmt = $pdo->prepare('SELECT b.*, u.name freelancer_name, u.department, u.avatar_color FROM bids b JOIN users u ON u.user_id = b.freelancer_id WHERE b.gig_id = ? ORDER BY b.submitted_at DESC'); $stmt->execute([$gigId]);
-        $reviews = $pdo->prepare('SELECT r.*, u.name reviewer_name FROM reviews r JOIN users u ON u.user_id = r.reviewer_id WHERE r.gig_id = ?'); $reviews->execute([$gigId]);
-        respond(['gig' => $gig, 'bids' => $stmt->fetchAll(), 'reviews' => $reviews->fetchAll()]);
+        
+        $stmt = $pdo->prepare('SELECT b.*, u.name freelancer_name, u.department, u.avatar_color FROM bids b JOIN users u ON u.user_id = b.freelancer_id WHERE b.gig_id = ? ORDER BY b.submitted_at DESC');
+        $stmt->execute([$gigId]);
+        $bids = $stmt->fetchAll();
+
+        foreach ($bids as $bid) {
+            if ($bid['status'] === 'Accepted') {
+                $gig['accepted_freelancer_id'] = (int) $bid['freelancer_id'];
+                $gig['accepted_freelancer_name'] = $bid['freelancer_name'];
+                break;
+            }
+        }
+
+        $reviews = $pdo->prepare('SELECT r.*, u.name reviewer_name FROM reviews r JOIN users u ON u.user_id = r.reviewer_id WHERE r.gig_id = ?');
+        $reviews->execute([$gigId]);
+        respond(['gig' => $gig, 'bids' => $bids, 'reviews' => $reviews->fetchAll()]);
     }
 
     if ($action === 'create_gig' && $method === 'POST') {
@@ -226,17 +289,60 @@ try {
     }
 
     if ($action === 'update_status' && $method === 'POST') {
-        requireFields($body, ['gig_id', 'status']); $allowed = ['Submitted', 'Completed', 'Disputed']; if (!in_array($body['status'], $allowed, true)) respond(['error' => 'Invalid status.'], 422); $stmt = $pdo->prepare('UPDATE gigs SET status = ?, submitted_at = CASE WHEN ? = "Submitted" THEN NOW() ELSE submitted_at END, completed_at = CASE WHEN ? = "Completed" THEN NOW() ELSE completed_at END WHERE gig_id = ? AND (client_id = ? OR EXISTS (SELECT 1 FROM bids WHERE bids.gig_id = gigs.gig_id AND freelancer_id = ? AND status = "Accepted"))'); $stmt->execute([$body['status'], $body['status'], $body['status'], (int) $body['gig_id'], $userId, $userId]); if (!$stmt->rowCount()) respond(['error' => 'You cannot update this gig.'], 403); respond(['message' => 'Gig marked ' . $body['status'] . '.']);
+        requireFields($body, ['gig_id', 'status']);
+        $allowed = ['Submitted', 'Completed', 'Disputed', 'Cancelled'];
+        if (!in_array($body['status'], $allowed, true)) respond(['error' => 'Invalid status.'], 422);
+        $gigId = (int) $body['gig_id'];
+        $newStatus = (string) $body['status'];
+
+        $stmt = $pdo->prepare('UPDATE gigs SET status = ?, submitted_at = CASE WHEN ? = "Submitted" THEN NOW() ELSE submitted_at END, completed_at = CASE WHEN ? = "Completed" THEN NOW() ELSE completed_at END WHERE gig_id = ? AND (client_id = ? OR EXISTS (SELECT 1 FROM bids WHERE bids.gig_id = gigs.gig_id AND freelancer_id = ? AND status = "Accepted"))');
+        $stmt->execute([$newStatus, $newStatus, $newStatus, $gigId, $userId, $userId]);
+        if (!$stmt->rowCount()) respond(['error' => 'You cannot update this gig.'], 403);
+
+        if ($newStatus === 'Completed') {
+            try {
+                $txStmt = $pdo->prepare("INSERT INTO transactions (gig_id, amount, payment_status, completed_at) SELECT g.gig_id, COALESCE(MAX(b.proposed_price), g.budget), 'Pending', NOW() FROM gigs g LEFT JOIN bids b ON b.gig_id = g.gig_id AND b.status = 'Accepted' WHERE g.gig_id = ? GROUP BY g.gig_id, g.budget ON DUPLICATE KEY UPDATE completed_at = NOW()");
+                $txStmt->execute([$gigId]);
+            } catch (Throwable) {
+                // Trigger might have already handled it or duplicate
+            }
+        }
+
+        respond(['message' => 'Gig marked ' . $newStatus . '.']);
     }
 
     if ($action === 'review' && $method === 'POST') {
-        requireFields($body, ['gig_id', 'reviewee_id', 'rating', 'comment']);
+        requireFields($body, ['gig_id', 'rating', 'comment']);
         $reviewGigId = (int) $body['gig_id'];
-        $revieweeId = (int) $body['reviewee_id'];
         $rating = (int) $body['rating'];
-        $stmt = $pdo->prepare("INSERT INTO reviews (gig_id, reviewer_id, reviewee_id, rating, comment) SELECT ?, ?, ?, ?, ? FROM gigs WHERE gig_id = ? AND status = 'Completed'");
-        $stmt->execute([$reviewGigId, $userId, $revieweeId, $rating, $body['comment'], $reviewGigId]);
-        if (!$stmt->rowCount()) respond(['error' => 'Reviews are only available after completion.'], 422);
+        if ($rating < 1 || $rating > 5) respond(['error' => 'Rating must be between 1 and 5.'], 422);
+
+        $stmt = $pdo->prepare('SELECT g.client_id, (SELECT freelancer_id FROM bids WHERE gig_id = g.gig_id AND status = "Accepted" LIMIT 1) accepted_freelancer_id, g.status FROM gigs g WHERE g.gig_id = ?');
+        $stmt->execute([$reviewGigId]);
+        $gigRow = $stmt->fetch();
+        if (!$gigRow || $gigRow['status'] !== 'Completed') {
+            respond(['error' => 'Reviews are only available after gig completion.'], 422);
+        }
+
+        $clientId = (int) $gigRow['client_id'];
+        $freelancerId = (int) ($gigRow['accepted_freelancer_id'] ?? 0);
+
+        $revieweeId = 0;
+        if ($userId === $clientId) {
+            $revieweeId = (int) ($body['reviewee_id'] ?? $freelancerId);
+            if ($revieweeId === 0 && $freelancerId > 0) $revieweeId = $freelancerId;
+        } elseif ($userId === $freelancerId) {
+            $revieweeId = $clientId;
+        } else {
+            respond(['error' => 'Only the client or accepted freelancer can review this gig.'], 403);
+        }
+
+        if ($revieweeId === 0 || $revieweeId === $userId) {
+            respond(['error' => 'Invalid review recipient.'], 422);
+        }
+
+        $stmt = $pdo->prepare("INSERT INTO reviews (gig_id, reviewer_id, reviewee_id, rating, comment) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE rating = VALUES(rating), comment = VALUES(comment)");
+        $stmt->execute([$reviewGigId, $userId, $revieweeId, $rating, $body['comment']]);
         respond(['message' => 'Review published successfully.'], 201);
     }
 
