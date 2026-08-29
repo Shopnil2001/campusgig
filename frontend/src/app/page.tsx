@@ -159,6 +159,43 @@ function safeLower(str?: string): string {
   return (str || "").toLowerCase();
 }
 
+function EmailChip({
+  email,
+  label,
+  onNotice,
+}: {
+  email: string;
+  label?: string;
+  onNotice?: (msg: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy(e: React.MouseEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      void navigator.clipboard.writeText(email);
+      setCopied(true);
+      if (onNotice) onNotice(`Copied ${email} to clipboard!`);
+      setTimeout(() => setCopied(false), 2500);
+    } else {
+      window.prompt("Copy email address:", email);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="email-chip"
+      onClick={handleCopy}
+      title="Click to copy email address"
+      style={{ cursor: "pointer", border: "1px solid #bbf7d0", background: "#f0fdf4" }}
+    >
+      ✉️ {copied ? "✓ Copied!" : label || email}
+    </button>
+  );
+}
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [gigs, setGigs] = useState<Gig[]>([]);
@@ -920,6 +957,7 @@ export default function Home() {
                   setModal("dispute");
                 }}
                 onViewProfile={openUserProfile}
+                onNotice={showNotice}
                 request={request}
               />
             )
@@ -1274,11 +1312,9 @@ export default function Home() {
           <div className="profile-fields" style={{ marginBottom: "16px" }}>
             <div>
               <small>Campus Email</small>
-              <strong>
-                <a href={`mailto:${viewingProfileUser.email}`} style={{ color: "var(--coral)", textDecoration: "none" }}>
-                  ✉️ {viewingProfileUser.email}
-                </a>
-              </strong>
+              <div style={{ marginTop: "4px" }}>
+                <EmailChip email={viewingProfileUser.email} onNotice={showNotice} />
+              </div>
             </div>
             <div>
               <small>Student Reputation</small>
@@ -1328,14 +1364,12 @@ export default function Home() {
             </div>
           )}
 
-          <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>
-            <a
-              href={`mailto:${viewingProfileUser.email}`}
-              className="action-btn primary"
-              style={{ flex: 1, textDecoration: "none", textAlign: "center" }}
-            >
-              ✉️ Send Email to {viewingProfileUser.name.split(" ")[0]}
-            </a>
+          <div style={{ marginTop: "20px", display: "flex", gap: "10px", alignItems: "center" }}>
+            <EmailChip
+              email={viewingProfileUser.email}
+              label={`✉️ Copy Email (${viewingProfileUser.email})`}
+              onNotice={showNotice}
+            />
             <button className="action-btn" onClick={() => setModal(null)}>
               Close
             </button>
@@ -1356,6 +1390,7 @@ export default function Home() {
             setModal("review");
           }}
           onViewProfile={openUserProfile}
+          onNotice={showNotice}
           request={request}
         />
       )}
@@ -1397,6 +1432,7 @@ function MyGigs({
   onReview,
   onDispute,
   onViewProfile,
+  onNotice,
   request,
 }: {
   gigs: Gig[];
@@ -1406,6 +1442,7 @@ function MyGigs({
   onReview: (gig: Gig) => void;
   onDispute: (gig: Gig) => void;
   onViewProfile?: (userId: number) => void;
+  onNotice?: (msg: string) => void;
   request: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
 }) {
   return (
@@ -1417,82 +1454,81 @@ function MyGigs({
       <div className="simple-list">
         {gigs.length ? (
           gigs.map((gig) => (
-            <div className="simple-row" key={gig.gig_id}>
-              <span className="gig-symbol coral">✦</span>
-              <div style={{ cursor: "pointer" }} onClick={() => onOpen(gig)}>
-                <strong>{gig.title}</strong>
-                <small>
-                  {gig.bid_count} proposal{Number(gig.bid_count) === 1 ? "" : "s"} · due {gig.deadline}
-                </small>
-                {gig.accepted_freelancer_name && (
-                  <div className="accepted-contact-chip">
-                    <span>Freelancer: <strong>{gig.accepted_freelancer_name}</strong></span>
-                    {gig.accepted_freelancer_email && (
-                      <a href={`mailto:${gig.accepted_freelancer_email}`} className="email-chip" title="Send email">
-                        ✉️ {gig.accepted_freelancer_email}
-                      </a>
-                    )}
-                    {gig.accepted_freelancer_id && onViewProfile && (
+            <div className="simple-row" key={gig.gig_id} style={{ flexDirection: "column", alignItems: "stretch", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+                <span className="gig-symbol coral">✦</span>
+                <div style={{ cursor: "pointer", flex: 1 }} onClick={() => onOpen(gig)}>
+                  <strong>{gig.title}</strong>
+                  <small>
+                    {gig.bid_count} proposal{Number(gig.bid_count) === 1 ? "" : "s"} · due {gig.deadline}
+                  </small>
+                </div>
+                <b>${gig.budget}</b>
+                <em>{gig.status}</em>
+
+                <div style={{ display: "flex", gap: "6px" }}>
+                  {gig.status === "Open" && (
+                    <>
                       <button
-                        className="text-chip-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onViewProfile(gig.accepted_freelancer_id!);
-                        }}
+                        className="action-btn"
+                        onClick={() => onEdit(gig)}
+                        style={{ background: "#f3f4f6", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
                       >
-                        View Profile ➔
+                        ✏️ Edit
                       </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              <b>${gig.budget}</b>
-              <em>{gig.status}</em>
+                      <button
+                        className="action-btn danger"
+                        onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Cancelled" })}
+                        style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  )}
 
-              <div style={{ display: "flex", gap: "6px" }}>
-                {gig.status === "Open" && (
-                  <>
-                    <button
-                      className="action-btn"
-                      onClick={() => onEdit(gig)}
-                      style={{ background: "#f3f4f6", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
-                    >
-                      ✏️ Edit
+                  <button
+                    className="action-btn danger"
+                    onClick={() => onDelete(gig.gig_id)}
+                    style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
+                  >
+                    🗑️ Delete
+                  </button>
+
+                  {(gig.status === "In Progress" || gig.status === "Submitted") && (
+                    <button className="action-btn secondary" onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Completed" })}>
+                      {gig.status === "Submitted" ? "Approve Delivery & Complete" : "Complete"}
                     </button>
-                    <button
-                      className="action-btn danger"
-                      onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Cancelled" })}
-                      style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
-                    >
-                      Cancel
+                  )}
+                  {gig.status === "Completed" && (
+                    <button className="action-btn primary" onClick={() => onReview(gig)}>
+                      Review Freelancer
                     </button>
-                  </>
-                )}
-
-                <button
-                  className="action-btn danger"
-                  onClick={() => onDelete(gig.gig_id)}
-                  style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
-                >
-                  🗑️ Delete
-                </button>
-
-                {(gig.status === "In Progress" || gig.status === "Submitted") && (
-                  <button className="action-btn secondary" onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Completed" })}>
-                    {gig.status === "Submitted" ? "Approve Delivery & Complete" : "Complete"}
-                  </button>
-                )}
-                {gig.status === "Completed" && (
-                  <button className="action-btn primary" onClick={() => onReview(gig)}>
-                    Review Freelancer
-                  </button>
-                )}
-                {gig.status !== "Completed" && gig.status !== "Disputed" && gig.status !== "Cancelled" && (
-                  <button className="action-btn danger" onClick={() => onDispute(gig)}>
-                    Dispute
-                  </button>
-                )}
+                  )}
+                  {gig.status !== "Completed" && gig.status !== "Disputed" && gig.status !== "Cancelled" && (
+                    <button className="action-btn danger" onClick={() => onDispute(gig)}>
+                      Dispute
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {gig.accepted_freelancer_name && (
+                <div className="accepted-contact-chip" style={{ paddingLeft: "32px" }}>
+                  <span>Freelancer: <strong>{gig.accepted_freelancer_name}</strong></span>
+                  {gig.accepted_freelancer_email && (
+                    <EmailChip email={gig.accepted_freelancer_email} onNotice={onNotice} />
+                  )}
+                  {gig.accepted_freelancer_id && onViewProfile && (
+                    <button
+                      type="button"
+                      className="text-chip-btn"
+                      onClick={() => onViewProfile(gig.accepted_freelancer_id!)}
+                    >
+                      View Profile ➔
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           ))
         ) : (
@@ -1587,9 +1623,11 @@ function MyBids({
                     <p>Client: <strong>{bid.client_name}</strong> {bid.client_department ? `(${bid.client_department})` : ""}</p>
                   </div>
                   {bid.client_email && (
-                    <a href={`mailto:${bid.client_email}`} className="email-chip">
-                      ✉️ Contact Client ({bid.client_email})
-                    </a>
+                    <EmailChip
+                      email={bid.client_email}
+                      label={`✉️ Email Client (${bid.client_email})`}
+                      onNotice={onNotice}
+                    />
                   )}
                 </div>
               )}
@@ -1855,6 +1893,7 @@ function GigDrawer({
   onBid,
   onReview,
   onViewProfile,
+  onNotice,
   request,
 }: {
   gig: Gig;
@@ -1865,6 +1904,7 @@ function GigDrawer({
   onBid: () => void;
   onReview?: (gig: Gig) => void;
   onViewProfile?: (userId: number) => void;
+  onNotice?: (msg: string) => void;
   request: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
 }) {
   const isOwner = user && gig.client_id === user.user_id;
@@ -1911,9 +1951,11 @@ function GigDrawer({
               <p>Client: <strong>{gig.client_name}</strong></p>
             </div>
             {gig.client_email && (
-              <a href={`mailto:${gig.client_email}`} className="email-chip">
-                ✉️ Email Client ({gig.client_email})
-              </a>
+              <EmailChip
+                email={gig.client_email}
+                label={`✉️ Email Client (${gig.client_email})`}
+                onNotice={onNotice}
+              />
             )}
           </div>
         )}
@@ -1974,6 +2016,7 @@ function GigDrawer({
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "4px", gap: "8px" }}>
                       {onViewProfile && (
                         <button
+                          type="button"
                           className="action-btn"
                           style={{ fontSize: "11px", padding: "4px 10px", background: "#fff" }}
                           onClick={() => onViewProfile(bid.freelancer_id)}
@@ -1996,9 +2039,7 @@ function GigDrawer({
                           <p>Contact: <strong>{bid.freelancer_email || "Email verified"}</strong></p>
                         </div>
                         {bid.freelancer_email && (
-                          <a href={`mailto:${bid.freelancer_email}`} className="email-chip">
-                            ✉️ Send Email
-                          </a>
+                          <EmailChip email={bid.freelancer_email} onNotice={onNotice} />
                         )}
                       </div>
                     )}
