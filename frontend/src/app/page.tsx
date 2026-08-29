@@ -388,27 +388,26 @@ export default function Home() {
   async function openGig(gig: Gig) {
     setSelectedGig(gig);
     try {
-      const response = await fetch(`${API}/index.php?action=gig&gig_id=${gig.gig_id}`);
+      const activeId = user?.user_id || 0;
+      const response = await fetch(`${API}/index.php?action=gig&gig_id=${gig.gig_id}&user_id=${activeId}`);
       if (response.ok) {
         const data = await response.json();
-        if (data.gig) setSelectedGig(data.gig);
-        if (Array.isArray(data.bids)) setBids(data.bids);
+        if (data.gig) {
+          setSelectedGig({
+            ...gig,
+            ...data.gig,
+            skills: data.gig.skills || gig.skills,
+          });
+        }
+        if (Array.isArray(data.bids)) {
+          setBids(data.bids);
+        } else {
+          setBids([]);
+        }
         if (Array.isArray(data.reviews)) setGigReviews(data.reviews);
       }
     } catch {
-      setBids([
-        {
-          bid_id: 1,
-          gig_id: gig.gig_id,
-          freelancer_id: 2,
-          freelancer_name: "Rafi Hasan",
-          department: "Electrical Engineering",
-          proposed_price: gig.budget,
-          message: "I can deliver high quality work for this gig before the deadline.",
-          status: "Pending",
-          avatar_color: "blue",
-        },
-      ]);
+      setBids([]);
     }
   }
 
@@ -2016,8 +2015,8 @@ function GigDrawer({
   onDispute: () => void;
   request: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
 }) {
-  const isOwner = user && gig.client_id === user.user_id;
-  const isAcceptedFreelancer = user && gig.accepted_freelancer_id === user.user_id;
+  const isOwner = Boolean(user && Number(gig.client_id) === Number(user.user_id));
+  const isAcceptedFreelancer = Boolean(user && Number(gig.accepted_freelancer_id) === Number(user.user_id));
   const safeBids = bids || [];
   const safeReviews = reviews || [];
 
