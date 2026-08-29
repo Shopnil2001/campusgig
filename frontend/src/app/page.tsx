@@ -1,7 +1,5 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import React, { Component, FormEvent, ReactNode, useEffect, useState } from "react";
 
 // Robust Error Boundary to guarantee Vercel / Client never crashes into 'page not available'
@@ -136,30 +134,6 @@ type Review = {
 
 const API = process.env.NEXT_PUBLIC_API_URL || "https://campusgig-tyeh.onrender.com";
 
-const demoUsers: User[] = [
-  { user_id: 1, name: "Aisha Rahman", email: "aisha@campus.edu", department: "Computer Science", batch: 2026, role_flag: "student", avatar_color: "coral" },
-  { user_id: 2, name: "Rafi Hasan", email: "rafi@campus.edu", department: "Electrical Engineering", batch: 2027, role_flag: "student", avatar_color: "blue" },
-  { user_id: 3, name: "Nadia Karim", email: "nadia@campus.edu", department: "Business Administration", batch: 2026, role_flag: "student", avatar_color: "mint" },
-  { user_id: 4, name: "CampusGigs Admin", email: "admin@campus.edu", department: "Administration", batch: 2026, role_flag: "admin", avatar_color: "navy" },
-];
-
-const demoSkills: Skill[] = [
-  { skill_id: 1, skill_name: "Web Development", category: "Technology" },
-  { skill_id: 2, skill_name: "Graphic Design", category: "Creative" },
-  { skill_id: 3, skill_name: "Mathematics Tutoring", category: "Academic" },
-  { skill_id: 4, skill_name: "Photography", category: "Creative" },
-  { skill_id: 5, skill_name: "Video Editing", category: "Creative" },
-  { skill_id: 6, skill_name: "Circuit Repair", category: "Technical" },
-  { skill_id: 7, skill_name: "Content Writing", category: "Writing" },
-  { skill_id: 8, skill_name: "Excel & Data", category: "Business" },
-];
-
-const demoGigs: Gig[] = [
-  { gig_id: 1, title: "Design a student club launch poster", description: "We need a bold, print-ready poster for our fall orientation event. Include editable source files.", budget: "35.00", deadline: "Aug 18, 2026", status: "Open", client_id: 2, client_name: "Rafi Hasan", department: "Electrical Engineering", bid_count: 1, skills: "Graphic Design" },
-  { gig_id: 2, title: "Build a responsive portfolio landing page", description: "Looking for a frontend developer to turn our Figma direction into a polished one-page site.", budget: "180.00", deadline: "Aug 28, 2026", status: "Open", client_id: 1, client_name: "Aisha Rahman", department: "Computer Science", bid_count: 1, skills: "Graphic Design, Web Development" },
-  { gig_id: 3, title: "Photograph our campus society event", description: "Two hours of event coverage with 30 edited photos delivered within one week.", budget: "75.00", deadline: "Aug 15, 2026", status: "In Progress", client_id: 3, client_name: "Nadia Karim", department: "Business Administration", bid_count: 1, skills: "Photography" },
-];
-
 function getInitials(name?: string): string {
   if (!name) return "CG";
   return name
@@ -177,12 +151,13 @@ function safeLower(str?: string): string {
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
-  const [gigs, setGigs] = useState<Gig[]>(demoGigs);
+  const [gigs, setGigs] = useState<Gig[]>([]);
   const [myGigs, setMyGigs] = useState<Gig[]>([]);
   const [myBids, setMyBids] = useState<Bid[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [skills, setSkills] = useState<Skill[]>(demoSkills);
-  const [stats, setStats] = useState({ total: 12, open_count: 8, completed_count: 4, completion_rate: 33 });
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [stats, setStats] = useState({ total: 0, open_count: 0, completed_count: 0, completion_rate: 0 });
+  const [loadingGigs, setLoadingGigs] = useState(true);
   const [view, setView] = useState("Discover");
   const [status, setStatus] = useState("Open");
   const [search, setSearch] = useState("");
@@ -225,6 +200,7 @@ export default function Home() {
   }
 
   async function loadGigs() {
+    setLoadingGigs(true);
     try {
       const response = await fetch(`${API}/index.php?action=dashboard&status=All`);
       if (!response.ok) throw new Error();
@@ -241,7 +217,9 @@ export default function Home() {
       }
       setConnected(true);
     } catch {
-      // Retain previous connection state to prevent dropping into demo mode during slow network responses
+      setConnected(false);
+    } finally {
+      setLoadingGigs(false);
     }
   }
 
@@ -315,14 +293,14 @@ export default function Home() {
         body: body ? JSON.stringify({ ...body, user_id: user?.user_id || 1 }) : undefined,
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      if (!response.ok) throw new Error(data.error || "Request failed");
       showNotice(data.message ?? "Action completed successfully");
       void loadGigs();
       void loadUserData();
       return data;
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : "Action performed in local mode";
-      showNotice(connected ? errMsg : "Action completed in local demo mode.");
+      const errMsg = err instanceof Error ? err.message : "Request failed. Please try again.";
+      showNotice(errMsg);
       return null;
     }
   }
@@ -449,22 +427,7 @@ export default function Home() {
       handleSetUser(result.user);
       setModal(null);
       showNotice(`Welcome back, ${result.user.name}!`);
-      return;
     }
-
-    // Dynamic login fallback matching pre-configured accounts or email
-    const matched = demoUsers.find((u) => u.email.toLowerCase() === email.toLowerCase()) || {
-      user_id: Date.now(),
-      name: email.split("@")[0].replace(".", " "),
-      email: email,
-      department: "Student Member",
-      batch: 2026,
-      role_flag: email.includes("admin") ? "admin" : "student",
-      avatar_color: "coral",
-    };
-    handleSetUser(matched as User);
-    setModal(null);
-    showNotice(`Welcome back, ${matched.name}!`);
   }
 
   async function submitRegister(event: FormEvent<HTMLFormElement>) {
@@ -481,22 +444,7 @@ export default function Home() {
       handleSetUser(result.user);
       setModal(null);
       showNotice(`Account registered! Welcome, ${result.user.name}!`);
-      return;
     }
-
-    // Dynamic registration fallback
-    const newUser: User = {
-      user_id: Date.now(),
-      name: name || "Campus Student",
-      email: email || "student@campus.edu",
-      department: department || "Computer Science",
-      batch: batch || 2026,
-      role_flag: "student",
-      avatar_color: "coral",
-    };
-    handleSetUser(newUser);
-    setModal(null);
-    showNotice(`Welcome to CampusGigs, ${newUser.name}!`);
   }
 
   async function submitReview(event: FormEvent<HTMLFormElement>) {
@@ -747,7 +695,7 @@ export default function Home() {
               <p className="overline">
                 CAMPUS MARKETPLACE{" "}
                 <span className={connected ? "online" : "offline"}>
-                  ● {connected ? "LIVE API CONNECTED" : "OFFLINE DEMO MODE"}
+                  ● {connected ? "LIVE API CONNECTED" : "API OFFLINE / CONNECTING"}
                 </span>
               </p>
               <h1>
@@ -766,17 +714,17 @@ export default function Home() {
               <div className="market-stats">
                 <div>
                   <span>Open gigs</span>
-                  <strong>{stats.open_count || gigs.filter((g) => g.status === "Open").length || 8}</strong>
+                  <strong>{loadingGigs ? "—" : (stats.open_count || gigs.filter((g) => g.status === "Open").length || 0)}</strong>
                   <small>↗ Available on campus</small>
                 </div>
                 <div>
                   <span>Completed locally</span>
-                  <strong>{stats.completed_count || 4}</strong>
+                  <strong>{loadingGigs ? "—" : (stats.completed_count || 0)}</strong>
                   <small>↗ 92% satisfaction</small>
                 </div>
                 <div>
                   <span>Student earners</span>
-                  <strong>248</strong>
+                  <strong>{loadingGigs ? "—" : (stats.total || gigs.length || 0)}</strong>
                   <small>Across departments</small>
                 </div>
                 <div className="stats-art">
@@ -813,7 +761,11 @@ export default function Home() {
               </div>
 
               <div className="gig-grid">
-                {filteredGigs.length ? (
+                {loadingGigs ? (
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="gig-card gig-card-skeleton" />
+                  ))
+                ) : filteredGigs.length ? (
                   filteredGigs.map((gig) => (
                     <article className="gig-card" key={gig.gig_id} onClick={() => void openGig(gig)}>
                       <div className="gig-card-top">
@@ -952,7 +904,7 @@ export default function Home() {
           <footer className="campus-footer">
             <span>
               <i className={connected ? "footer-dot live" : "footer-dot"} />{" "}
-              {connected ? `Connected to Live Backend (${API})` : "Offline Demo Mode Active"}
+              {connected ? `Connected to Live Backend (${API})` : `API Offline / Disconnected (${API})`}
             </span>
             <span>Built for CSE-311 · CampusGigs</span>
           </footer>

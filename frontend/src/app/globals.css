@@ -588,6 +588,21 @@ button { cursor: pointer; }
   transform: translateY(-3px);
 }
 
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.gig-card.gig-card-skeleton {
+  min-height: 220px;
+  background: #f1f5f9;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  animation: pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  cursor: default;
+  pointer-events: none;
+}
+
 .gig-card-top {
   align-items: center;
   display: flex;
