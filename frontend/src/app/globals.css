@@ -1287,4 +1287,72 @@ button { cursor: pointer; }
   .simple-row > b { display: none; }
 }
 
+/* Contact & Collaboration Banners */
+.accepted-contact-banner {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin: 10px 0 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.accepted-contact-banner strong { color: #065f46; font-size: 13px; display: block; margin-bottom: 2px; }
+.accepted-contact-banner p { color: #047857; font-size: 11px; margin: 0; }
+.accepted-contact-banner a { text-decoration: none; }
+
+.accepted-contact-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+.email-chip {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-decoration: none;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+.email-chip:hover {
+  background: #dcfce7;
+  color: #14532d;
+}
+.text-chip-btn {
+  background: none;
+  border: 0;
+  color: var(--coral);
+  font-weight: 700;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.text-chip-btn:hover { text-decoration: underline; }
+
+.bid-skills-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.bid-skills-tags span {
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
 

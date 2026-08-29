@@ -57,6 +57,8 @@ type User = {
   avatar_color: string;
   skills?: Skill[];
   average_rating?: number;
+  completed_gigs?: number;
+  reviews?: Review[];
 };
 
 type Skill = { skill_id: number; skill_name: string; category: string };
@@ -70,11 +72,13 @@ type Gig = {
   status: string;
   client_id: number;
   client_name: string;
+  client_email?: string;
   department: string;
   bid_count: number;
   skills: string | null;
   accepted_freelancer_id?: number;
   accepted_freelancer_name?: string;
+  accepted_freelancer_email?: string;
 };
 
 type Bid = {
@@ -82,7 +86,11 @@ type Bid = {
   gig_id: number;
   freelancer_id: number;
   freelancer_name: string;
+  freelancer_email?: string;
+  freelancer_rating?: number;
+  skills?: string[];
   department: string;
+  batch?: number;
   proposed_price: string;
   message: string;
   status: string;
@@ -91,6 +99,8 @@ type Bid = {
   gig_budget?: string;
   gig_status?: string;
   client_name?: string;
+  client_email?: string;
+  client_department?: string;
 };
 
 type Transaction = {
@@ -166,7 +176,8 @@ export default function Home() {
   const [gigReviews, setGigReviews] = useState<Review[]>([]);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [topFreelancers, setTopFreelancers] = useState<TopFreelancer[]>([]);
-  const [modal, setModal] = useState<"post" | "edit" | "bid" | "profile" | "skills" | "review" | "dispute" | "login" | "register" | null>(null);
+  const [modal, setModal] = useState<"post" | "edit" | "bid" | "profile" | "skills" | "review" | "dispute" | "login" | "register" | "user_profile" | null>(null);
+  const [viewingProfileUser, setViewingProfileUser] = useState<User | null>(null);
   const [reviewGig, setReviewGig] = useState<Gig | null>(null);
   const [disputeGig, setDisputeGig] = useState<Gig | null>(null);
   const [editingGig, setEditingGig] = useState<Gig | null>(null);
@@ -198,6 +209,23 @@ export default function Home() {
       localStorage.setItem("campusgigs_user", JSON.stringify(u));
     } else {
       localStorage.removeItem("campusgigs_user");
+    }
+  }
+
+  async function openUserProfile(targetUserId: number) {
+    try {
+      const res = await fetch(`${API}/index.php?action=user_profile&user_id=${targetUserId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setViewingProfileUser(data.user);
+          setModal("user_profile");
+          return;
+        }
+      }
+      showNotice("Could not load user profile.");
+    } catch {
+      showNotice("Could not load user profile.");
     }
   }
 
@@ -891,6 +919,7 @@ export default function Home() {
                   setDisputeGig(gig);
                   setModal("dispute");
                 }}
+                onViewProfile={openUserProfile}
                 request={request}
               />
             )
@@ -1228,6 +1257,92 @@ export default function Home() {
         </Modal>
       )}
 
+      {modal === "user_profile" && viewingProfileUser && (
+        <Modal title={`${viewingProfileUser.name}'s Profile`} close={() => setModal(null)}>
+          <div className="profile-hero" style={{ marginBottom: "16px" }}>
+            <div className={`profile-avatar ${viewingProfileUser.avatar_color || "coral"}`}>
+              {getInitials(viewingProfileUser.name)}
+            </div>
+            <div>
+              <p className="overline">VERIFIED STUDENT · BATCH {viewingProfileUser.batch || 2026}</p>
+              <h2>{viewingProfileUser.name}</h2>
+              <p>{viewingProfileUser.department} · Campus Member</p>
+            </div>
+            <span className="verified">✓ Verified</span>
+          </div>
+
+          <div className="profile-fields" style={{ marginBottom: "16px" }}>
+            <div>
+              <small>Campus Email</small>
+              <strong>
+                <a href={`mailto:${viewingProfileUser.email}`} style={{ color: "var(--coral)", textDecoration: "none" }}>
+                  ✉️ {viewingProfileUser.email}
+                </a>
+              </strong>
+            </div>
+            <div>
+              <small>Student Reputation</small>
+              <strong>
+                {Number(viewingProfileUser.average_rating || 5.0).toFixed(1)} <span className="stars">★★★★★</span>
+              </strong>
+            </div>
+            <div>
+              <small>Gigs Completed</small>
+              <strong>{viewingProfileUser.completed_gigs ?? 0} finished</strong>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "16px" }}>
+            <small style={{ color: "var(--muted)", fontWeight: 700, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.08em" }}>
+              Offered Skills
+            </small>
+            <div className="bid-skills-tags" style={{ marginTop: "6px" }}>
+              {viewingProfileUser.skills && viewingProfileUser.skills.length > 0 ? (
+                viewingProfileUser.skills.map((s) => (
+                  <span key={s.skill_id} style={{ fontSize: "11px", padding: "4px 8px" }}>
+                    {s.skill_name}
+                  </span>
+                ))
+              ) : (
+                <p style={{ fontSize: "12px", color: "var(--muted)" }}>No skills listed yet.</p>
+              )}
+            </div>
+          </div>
+
+          {viewingProfileUser.reviews && viewingProfileUser.reviews.length > 0 && (
+            <div style={{ marginTop: "16px" }}>
+              <small style={{ color: "var(--muted)", fontWeight: 700, textTransform: "uppercase", fontSize: "10px", letterSpacing: "0.08em" }}>
+                Client Reviews ({viewingProfileUser.reviews.length})
+              </small>
+              <div style={{ display: "grid", gap: "8px", marginTop: "8px", maxHeight: "180px", overflowY: "auto" }}>
+                {viewingProfileUser.reviews.map((r, i) => (
+                  <div key={i} className="review-card" style={{ padding: "10px 14px" }}>
+                    <div className="review-card-top" style={{ marginBottom: "4px" }}>
+                      <strong>{r.reviewer_name}</strong>
+                      <span style={{ color: "#f59e0b" }}>{"★".repeat(r.rating)}</span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: "11px" }}>&ldquo;{r.comment}&rdquo;</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>
+            <a
+              href={`mailto:${viewingProfileUser.email}`}
+              className="action-btn primary"
+              style={{ flex: 1, textDecoration: "none", textAlign: "center" }}
+            >
+              ✉️ Send Email to {viewingProfileUser.name.split(" ")[0]}
+            </a>
+            <button className="action-btn" onClick={() => setModal(null)}>
+              Close
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {selectedGig && !modal && (
         <GigDrawer
           gig={selectedGig}
@@ -1240,6 +1355,7 @@ export default function Home() {
             setReviewGig(gig);
             setModal("review");
           }}
+          onViewProfile={openUserProfile}
           request={request}
         />
       )}
@@ -1280,6 +1396,7 @@ function MyGigs({
   onDelete,
   onReview,
   onDispute,
+  onViewProfile,
   request,
 }: {
   gigs: Gig[];
@@ -1288,6 +1405,7 @@ function MyGigs({
   onDelete: (gigId: number) => void;
   onReview: (gig: Gig) => void;
   onDispute: (gig: Gig) => void;
+  onViewProfile?: (userId: number) => void;
   request: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
 }) {
   return (
@@ -1304,9 +1422,29 @@ function MyGigs({
               <div style={{ cursor: "pointer" }} onClick={() => onOpen(gig)}>
                 <strong>{gig.title}</strong>
                 <small>
-                  {gig.bid_count} proposals · due {gig.deadline}
-                  {gig.accepted_freelancer_name ? ` · Freelancer: ${gig.accepted_freelancer_name}` : ""}
+                  {gig.bid_count} proposal{Number(gig.bid_count) === 1 ? "" : "s"} · due {gig.deadline}
                 </small>
+                {gig.accepted_freelancer_name && (
+                  <div className="accepted-contact-chip">
+                    <span>Freelancer: <strong>{gig.accepted_freelancer_name}</strong></span>
+                    {gig.accepted_freelancer_email && (
+                      <a href={`mailto:${gig.accepted_freelancer_email}`} className="email-chip" title="Send email">
+                        ✉️ {gig.accepted_freelancer_email}
+                      </a>
+                    )}
+                    {gig.accepted_freelancer_id && onViewProfile && (
+                      <button
+                        className="text-chip-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onViewProfile(gig.accepted_freelancer_id!);
+                        }}
+                      >
+                        View Profile ➔
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               <b>${gig.budget}</b>
               <em>{gig.status}</em>
@@ -1394,51 +1532,67 @@ function MyBids({
       <div className="simple-list">
         {bids.length ? (
           bids.map((bid) => (
-            <div className="simple-row" key={bid.bid_id}>
-              <span className="gig-symbol blue">✦</span>
-              <div>
-                <strong>{bid.gig_title || `Gig #${bid.gig_id}`}</strong>
-                <small>Client: {bid.client_name || "Campus Client"}{bid.gig_status ? ` · Gig Status: ${bid.gig_status}` : ""}</small>
+            <div className="simple-row" key={bid.bid_id} style={{ flexDirection: "column", alignItems: "stretch", gap: "8px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+                <span className="gig-symbol blue">✦</span>
+                <div style={{ flex: 1 }}>
+                  <strong>{bid.gig_title || `Gig #${bid.gig_id}`}</strong>
+                  <small>Client: {bid.client_name || "Campus Client"}{bid.gig_status ? ` · Gig Status: ${bid.gig_status}` : ""}</small>
+                </div>
+                <b>${bid.proposed_price}</b>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <em className={`proposal-${bid.status.toLowerCase()}`}>{bid.status}</em>
+
+                  {bid.status === "Pending" && (
+                    <button
+                      style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 700, cursor: "pointer" }}
+                      onClick={() => onDeleteBid(bid.bid_id)}
+                      title="Withdraw proposal"
+                    >
+                      Withdraw
+                    </button>
+                  )}
+
+                  {bid.status === "Accepted" && bid.gig_status === "In Progress" && (
+                    <button
+                      className="action-btn secondary"
+                      onClick={() => onDeliver(bid.gig_id)}
+                      title="Mark work as delivered for client review"
+                    >
+                      🚀 Deliver Work
+                    </button>
+                  )}
+
+                  {bid.status === "Accepted" && bid.gig_status === "Submitted" && (
+                    <span style={{ fontSize: "9px", fontStyle: "italic", color: "#4f46e5" }}>
+                      ✓ Work Submitted
+                    </span>
+                  )}
+
+                  {bid.status === "Accepted" && bid.gig_status === "Completed" && (
+                    <button
+                      className="action-btn primary"
+                      onClick={() => onReview(bid)}
+                    >
+                      Review Client
+                    </button>
+                  )}
+                </div>
               </div>
-              <b>${bid.proposed_price}</b>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <em className={`proposal-${bid.status.toLowerCase()}`}>{bid.status}</em>
 
-                {bid.status === "Pending" && (
-                  <button
-                    style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 700, cursor: "pointer" }}
-                    onClick={() => onDeleteBid(bid.bid_id)}
-                    title="Withdraw proposal"
-                  >
-                    Withdraw
-                  </button>
-                )}
-
-                {bid.status === "Accepted" && bid.gig_status === "In Progress" && (
-                  <button
-                    className="action-btn secondary"
-                    onClick={() => onDeliver(bid.gig_id)}
-                    title="Mark work as delivered for client review"
-                  >
-                    🚀 Deliver Work
-                  </button>
-                )}
-
-                {bid.status === "Accepted" && bid.gig_status === "Submitted" && (
-                  <span style={{ fontSize: "9px", fontStyle: "italic", color: "#4f46e5" }}>
-                    ✓ Work Submitted
-                  </span>
-                )}
-
-                {bid.status === "Accepted" && bid.gig_status === "Completed" && (
-                  <button
-                    className="action-btn primary"
-                    onClick={() => onReview(bid)}
-                  >
-                    Review Client
-                  </button>
-                )}
-              </div>
+              {bid.status === "Accepted" && (
+                <div className="accepted-contact-banner" style={{ margin: "4px 0 0" }}>
+                  <div>
+                    <strong>🎉 Proposal Accepted!</strong>
+                    <p>Client: <strong>{bid.client_name}</strong> {bid.client_department ? `(${bid.client_department})` : ""}</p>
+                  </div>
+                  {bid.client_email && (
+                    <a href={`mailto:${bid.client_email}`} className="email-chip">
+                      ✉️ Contact Client ({bid.client_email})
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
           ))
         ) : (
@@ -1700,6 +1854,7 @@ function GigDrawer({
   onClose,
   onBid,
   onReview,
+  onViewProfile,
   request,
 }: {
   gig: Gig;
@@ -1709,9 +1864,12 @@ function GigDrawer({
   onClose: () => void;
   onBid: () => void;
   onReview?: (gig: Gig) => void;
+  onViewProfile?: (userId: number) => void;
   request: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
 }) {
   const isOwner = user && gig.client_id === user.user_id;
+  const isAcceptedFreelancer = user && gig.accepted_freelancer_id === user.user_id;
+
   return (
     <div className="drawer-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <aside className="gig-drawer">
@@ -1746,6 +1904,20 @@ function GigDrawer({
           </div>
         </div>
 
+        {isAcceptedFreelancer && (
+          <div className="accepted-contact-banner" style={{ margin: "14px 0" }}>
+            <div>
+              <strong>🎉 Your Proposal Was Accepted!</strong>
+              <p>Client: <strong>{gig.client_name}</strong></p>
+            </div>
+            {gig.client_email && (
+              <a href={`mailto:${gig.client_email}`} className="email-chip">
+                ✉️ Email Client ({gig.client_email})
+              </a>
+            )}
+          </div>
+        )}
+
         {isOwner && (
           <>
             <h3>
@@ -1754,17 +1926,81 @@ function GigDrawer({
             <div className="bid-list">
               {bids.length ? (
                 bids.map((bid) => (
-                  <div className="bid-row" key={bid.bid_id}>
-                    <div className="small-avatar">{bid.freelancer_name.split(" ").map((w) => w[0]).join("")}</div>
-                    <div>
-                      <strong>{bid.freelancer_name}</strong>
-                      <small>{bid.message}</small>
+                  <div className="bid-row" key={bid.bid_id} style={{ flexDirection: "column", alignItems: "stretch", gap: "8px", padding: "14px 16px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div
+                        style={{ display: "flex", alignItems: "center", gap: "10px", cursor: onViewProfile ? "pointer" : "default" }}
+                        onClick={() => onViewProfile && onViewProfile(bid.freelancer_id)}
+                        title="View Applicant Profile"
+                      >
+                        <div className={`small-avatar ${bid.avatar_color || "coral"}`}>
+                          {getInitials(bid.freelancer_name)}
+                        </div>
+                        <div>
+                          <strong style={{ color: "var(--navy)", display: "flex", alignItems: "center", gap: "6px" }}>
+                            {bid.freelancer_name}
+                            {bid.freelancer_rating && (
+                              <span style={{ color: "#f59e0b", fontSize: "11px", fontWeight: 700 }}>
+                                {Number(bid.freelancer_rating).toFixed(1)} ★
+                              </span>
+                            )}
+                          </strong>
+                          <small style={{ color: "var(--muted)", fontSize: "10px" }}>
+                            {bid.department}{bid.batch ? ` · Batch ${bid.batch}` : ""}
+                          </small>
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: "right" }}>
+                        <b style={{ fontSize: "14px", color: "var(--ink)" }}>${bid.proposed_price}</b>
+                        <span className={`proposal-${bid.status.toLowerCase()}`} style={{ display: "block", fontSize: "9px", marginTop: "2px" }}>
+                          {bid.status}
+                        </span>
+                      </div>
                     </div>
-                    <b>${bid.proposed_price}</b>
-                    {bid.status === "Pending" && (
-                      <button className="action-btn primary" onClick={() => void request("accept_bid", { bid_id: bid.bid_id })}>
-                        Accept Proposal
-                      </button>
+
+                    <p style={{ fontSize: "12px", color: "var(--ink-secondary)", margin: "4px 0", background: "#f8fafc", padding: "8px 12px", borderRadius: "6px" }}>
+                      &ldquo;{bid.message}&rdquo;
+                    </p>
+
+                    {bid.skills && bid.skills.length > 0 && (
+                      <div className="bid-skills-tags">
+                        {bid.skills.map((sk) => (
+                          <span key={sk}>{sk}</span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "4px", gap: "8px" }}>
+                      {onViewProfile && (
+                        <button
+                          className="action-btn"
+                          style={{ fontSize: "11px", padding: "4px 10px", background: "#fff" }}
+                          onClick={() => onViewProfile(bid.freelancer_id)}
+                        >
+                          👤 View Profile
+                        </button>
+                      )}
+
+                      {bid.status === "Pending" && (
+                        <button className="action-btn primary" onClick={() => void request("accept_bid", { bid_id: bid.bid_id })}>
+                          Accept Proposal ➔
+                        </button>
+                      )}
+                    </div>
+
+                    {bid.status === "Accepted" && (
+                      <div className="accepted-contact-banner" style={{ margin: "6px 0 0" }}>
+                        <div>
+                          <strong>✓ Accepted Freelancer</strong>
+                          <p>Contact: <strong>{bid.freelancer_email || "Email verified"}</strong></p>
+                        </div>
+                        {bid.freelancer_email && (
+                          <a href={`mailto:${bid.freelancer_email}`} className="email-chip">
+                            ✉️ Send Email
+                          </a>
+                        )}
+                      </div>
                     )}
                   </div>
                 ))

@@ -119,15 +119,41 @@ try {
     }
 
     if ($action === 'my_gigs') {
-        $stmt = $pdo->prepare('SELECT g.gig_id, g.title, g.description, g.budget, DATE_FORMAT(g.deadline, "%b %d, %Y") deadline, g.status, g.created_at, COUNT(DISTINCT b.bid_id) bid_count, GROUP_CONCAT(DISTINCT s.skill_name ORDER BY s.skill_name SEPARATOR ", ") skills, MAX(CASE WHEN b.status = "Accepted" THEN b.freelancer_id END) accepted_freelancer_id, MAX(CASE WHEN b.status = "Accepted" THEN u.name END) accepted_freelancer_name FROM gigs g LEFT JOIN bids b ON b.gig_id = g.gig_id LEFT JOIN users u ON u.user_id = b.freelancer_id LEFT JOIN gig_skill_required gsr ON gsr.gig_id = g.gig_id LEFT JOIN skills s ON s.skill_id = gsr.skill_id WHERE g.client_id = ? GROUP BY g.gig_id ORDER BY g.created_at DESC');
+        $stmt = $pdo->prepare('SELECT g.gig_id, g.title, g.description, g.budget, DATE_FORMAT(g.deadline, "%b %d, %Y") deadline, g.status, g.created_at, COUNT(DISTINCT b.bid_id) bid_count, GROUP_CONCAT(DISTINCT s.skill_name ORDER BY s.skill_name SEPARATOR ", ") skills, MAX(CASE WHEN b.status = "Accepted" THEN b.freelancer_id END) accepted_freelancer_id, MAX(CASE WHEN b.status = "Accepted" THEN u.name END) accepted_freelancer_name, MAX(CASE WHEN b.status = "Accepted" THEN u.email END) accepted_freelancer_email FROM gigs g LEFT JOIN bids b ON b.gig_id = g.gig_id LEFT JOIN users u ON u.user_id = b.freelancer_id LEFT JOIN gig_skill_required gsr ON gsr.gig_id = g.gig_id LEFT JOIN skills s ON s.skill_id = gsr.skill_id WHERE g.client_id = ? GROUP BY g.gig_id ORDER BY g.created_at DESC');
         $stmt->execute([$userId]);
         respond(['gigs' => $stmt->fetchAll()]);
     }
 
     if ($action === 'my_bids') {
-        $stmt = $pdo->prepare('SELECT b.bid_id, b.gig_id, b.proposed_price, b.message, b.status bid_status, b.submitted_at, g.title gig_title, g.budget gig_budget, g.status gig_status, g.deadline, u.name client_name, u.department client_department FROM bids b JOIN gigs g ON g.gig_id = b.gig_id JOIN users u ON u.user_id = g.client_id WHERE b.freelancer_id = ? ORDER BY b.submitted_at DESC');
+        $stmt = $pdo->prepare('SELECT b.bid_id, b.gig_id, b.proposed_price, b.message, b.status, b.status bid_status, b.submitted_at, g.title gig_title, g.budget gig_budget, g.status gig_status, g.deadline, u.name client_name, u.email client_email, u.department client_department FROM bids b JOIN gigs g ON g.gig_id = b.gig_id JOIN users u ON u.user_id = g.client_id WHERE b.freelancer_id = ? ORDER BY b.submitted_at DESC');
         $stmt->execute([$userId]);
         respond(['bids' => $stmt->fetchAll()]);
+    }
+
+    if ($action === 'user_profile' && $method === 'GET') {
+        $targetUserId = (int) ($_GET['user_id'] ?? 0);
+        $stmt = $pdo->prepare('SELECT user_id, name, email, department, batch, role_flag, avatar_color, created_at FROM users WHERE user_id = ?');
+        $stmt->execute([$targetUserId]);
+        $targetUser = $stmt->fetch();
+        if (!$targetUser) respond(['error' => 'User not found.'], 404);
+
+        $skStmt = $pdo->prepare('SELECT s.skill_id, s.skill_name, s.category FROM user_skills us JOIN skills s ON s.skill_id = us.skill_id WHERE us.user_id = ? ORDER BY s.category, s.skill_name');
+        $skStmt->execute([$targetUserId]);
+        $targetUser['skills'] = $skStmt->fetchAll();
+
+        $avgStmt = $pdo->prepare('SELECT ROUND(COALESCE(AVG(rating), 5.0), 1) AS average FROM reviews WHERE reviewee_id = ?');
+        $avgStmt->execute([$targetUserId]);
+        $targetUser['average_rating'] = (float)($avgStmt->fetchColumn() ?: 5.0);
+
+        $compFreeStmt = $pdo->prepare('SELECT COUNT(DISTINCT g.gig_id) FROM gigs g JOIN bids b ON b.gig_id = g.gig_id WHERE b.freelancer_id = ? AND b.status = "Accepted" AND g.status = "Completed"');
+        $compFreeStmt->execute([$targetUserId]);
+        $targetUser['completed_gigs'] = (int)$compFreeStmt->fetchColumn();
+
+        $revStmt = $pdo->prepare('SELECT r.rating, r.comment, r.created_at, u.name reviewer_name FROM reviews r JOIN users u ON u.user_id = r.reviewer_id WHERE r.reviewee_id = ? ORDER BY r.created_at DESC LIMIT 10');
+        $revStmt->execute([$targetUserId]);
+        $targetUser['reviews'] = $revStmt->fetchAll();
+
+        respond(['user' => $targetUser]);
     }
 
     if ($action === 'dashboard') {
@@ -165,22 +191,27 @@ try {
 
     if ($action === 'gig' && $method === 'GET') {
         $gigId = (int) ($_GET['id'] ?? 0);
-        $stmt = $pdo->prepare('SELECT g.*, u.name client_name, u.department, u.batch FROM gigs g JOIN users u ON u.user_id = g.client_id WHERE g.gig_id = ?');
+        $stmt = $pdo->prepare('SELECT g.*, u.name client_name, u.email client_email, u.department, u.batch FROM gigs g JOIN users u ON u.user_id = g.client_id WHERE g.gig_id = ?');
         $stmt->execute([$gigId]);
         $gig = $stmt->fetch();
         if (!$gig) respond(['error' => 'Gig not found.'], 404);
         
-        $stmt = $pdo->prepare('SELECT b.*, u.name freelancer_name, u.department, u.avatar_color FROM bids b JOIN users u ON u.user_id = b.freelancer_id WHERE b.gig_id = ? ORDER BY b.submitted_at DESC');
+        $stmt = $pdo->prepare('SELECT b.*, u.name freelancer_name, u.email freelancer_email, u.department, u.batch, u.avatar_color, ROUND(COALESCE((SELECT AVG(rating) FROM reviews WHERE reviewee_id = u.user_id), 5.0), 1) freelancer_rating FROM bids b JOIN users u ON u.user_id = b.freelancer_id WHERE b.gig_id = ? ORDER BY b.submitted_at DESC');
         $stmt->execute([$gigId]);
         $bids = $stmt->fetchAll();
 
-        foreach ($bids as $bid) {
+        foreach ($bids as &$bid) {
+            $skStmt = $pdo->prepare('SELECT s.skill_name FROM user_skills us JOIN skills s ON s.skill_id = us.skill_id WHERE us.user_id = ?');
+            $skStmt->execute([(int)$bid['freelancer_id']]);
+            $bid['skills'] = $skStmt->fetchAll(PDO::FETCH_COLUMN);
+
             if ($bid['status'] === 'Accepted') {
                 $gig['accepted_freelancer_id'] = (int) $bid['freelancer_id'];
                 $gig['accepted_freelancer_name'] = $bid['freelancer_name'];
-                break;
+                $gig['accepted_freelancer_email'] = $bid['freelancer_email'];
             }
         }
+        unset($bid);
 
         $reviews = $pdo->prepare('SELECT r.*, u.name reviewer_name FROM reviews r JOIN users u ON u.user_id = r.reviewer_id WHERE r.gig_id = ?');
         $reviews->execute([$gigId]);
