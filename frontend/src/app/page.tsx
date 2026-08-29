@@ -1454,81 +1454,87 @@ function MyGigs({
       <div className="simple-list">
         {gigs.length ? (
           gigs.map((gig) => (
-            <div className="simple-row" key={gig.gig_id} style={{ flexDirection: "column", alignItems: "stretch", gap: "8px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                <span className="gig-symbol coral">✦</span>
-                <div style={{ cursor: "pointer", flex: 1 }} onClick={() => onOpen(gig)}>
-                  <strong>{gig.title}</strong>
-                  <small>
-                    {gig.bid_count} proposal{Number(gig.bid_count) === 1 ? "" : "s"} · due {gig.deadline}
-                  </small>
-                </div>
-                <b>${gig.budget}</b>
-                <em>{gig.status}</em>
-
-                <div style={{ display: "flex", gap: "6px" }}>
-                  {gig.status === "Open" && (
-                    <>
+            <div className="simple-row" key={gig.gig_id}>
+              <span className="gig-symbol coral">✦</span>
+              <div>
+                <strong style={{ cursor: "pointer" }} onClick={() => onOpen(gig)}>
+                  {gig.title}
+                </strong>
+                <small>
+                  {gig.bid_count} proposal{Number(gig.bid_count) === 1 ? "" : "s"} · due {gig.deadline}
+                </small>
+                {gig.accepted_freelancer_name && (
+                  <div className="accepted-contact-chip">
+                    <span>Freelancer: <strong>{gig.accepted_freelancer_name}</strong></span>
+                    {gig.accepted_freelancer_email && (
+                      <EmailChip email={gig.accepted_freelancer_email} onNotice={onNotice} />
+                    )}
+                    {gig.accepted_freelancer_id && onViewProfile && (
                       <button
-                        className="action-btn"
-                        onClick={() => onEdit(gig)}
-                        style={{ background: "#f3f4f6", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
+                        type="button"
+                        className="text-chip-btn"
+                        onClick={() => onViewProfile(gig.accepted_freelancer_id!)}
                       >
-                        ✏️ Edit
+                        View Profile ➔
                       </button>
-                      <button
-                        className="action-btn danger"
-                        onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Cancelled" })}
-                        style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  )}
-
-                  <button
-                    className="action-btn danger"
-                    onClick={() => onDelete(gig.gig_id)}
-                    style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
-                  >
-                    🗑️ Delete
-                  </button>
-
-                  {(gig.status === "In Progress" || gig.status === "Submitted") && (
-                    <button className="action-btn secondary" onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Completed" })}>
-                      {gig.status === "Submitted" ? "Approve Delivery & Complete" : "Complete"}
-                    </button>
-                  )}
-                  {gig.status === "Completed" && (
-                    <button className="action-btn primary" onClick={() => onReview(gig)}>
-                      Review Freelancer
-                    </button>
-                  )}
-                  {gig.status !== "Completed" && gig.status !== "Disputed" && gig.status !== "Cancelled" && (
-                    <button className="action-btn danger" onClick={() => onDispute(gig)}>
-                      Dispute
-                    </button>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
+              <b>${gig.budget}</b>
+              <em>{gig.status}</em>
 
-              {gig.accepted_freelancer_name && (
-                <div className="accepted-contact-chip" style={{ paddingLeft: "32px" }}>
-                  <span>Freelancer: <strong>{gig.accepted_freelancer_name}</strong></span>
-                  {gig.accepted_freelancer_email && (
-                    <EmailChip email={gig.accepted_freelancer_email} onNotice={onNotice} />
-                  )}
-                  {gig.accepted_freelancer_id && onViewProfile && (
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {gig.status === "Open" && (
+                  <>
                     <button
                       type="button"
-                      className="text-chip-btn"
-                      onClick={() => onViewProfile(gig.accepted_freelancer_id!)}
+                      className="action-btn"
+                      onClick={() => onEdit(gig)}
+                      style={{ background: "#f3f4f6", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
                     >
-                      View Profile ➔
+                      ✏️ Edit
                     </button>
-                  )}
-                </div>
-              )}
+                    <button
+                      type="button"
+                      className="action-btn danger"
+                      onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Cancelled" })}
+                      style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  className="action-btn danger"
+                  onClick={() => onDelete(gig.gig_id)}
+                  style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "11px", cursor: "pointer" }}
+                >
+                  🗑️ Delete
+                </button>
+
+                {(gig.status === "In Progress" || gig.status === "Submitted") && (
+                  <button
+                    type="button"
+                    className="action-btn secondary"
+                    onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Completed" })}
+                  >
+                    {gig.status === "Submitted" ? "Approve & Complete" : "Complete"}
+                  </button>
+                )}
+                {gig.status === "Completed" && (
+                  <button type="button" className="action-btn primary" onClick={() => onReview(gig)}>
+                    Review Freelancer
+                  </button>
+                )}
+                {gig.status !== "Completed" && gig.status !== "Disputed" && gig.status !== "Cancelled" && (
+                  <button type="button" className="action-btn danger" onClick={() => onDispute(gig)}>
+                    Dispute
+                  </button>
+                )}
+              </div>
             </div>
           ))
         ) : (
@@ -1568,69 +1574,65 @@ function MyBids({
       <div className="simple-list">
         {bids.length ? (
           bids.map((bid) => (
-            <div className="simple-row" key={bid.bid_id} style={{ flexDirection: "column", alignItems: "stretch", gap: "8px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                <span className="gig-symbol blue">✦</span>
-                <div style={{ flex: 1 }}>
-                  <strong>{bid.gig_title || `Gig #${bid.gig_id}`}</strong>
-                  <small>Client: {bid.client_name || "Campus Client"}{bid.gig_status ? ` · Gig Status: ${bid.gig_status}` : ""}</small>
-                </div>
-                <b>${bid.proposed_price}</b>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <em className={`proposal-${bid.status.toLowerCase()}`}>{bid.status}</em>
-
-                  {bid.status === "Pending" && (
-                    <button
-                      style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 700, cursor: "pointer" }}
-                      onClick={() => onDeleteBid(bid.bid_id)}
-                      title="Withdraw proposal"
-                    >
-                      Withdraw
-                    </button>
-                  )}
-
-                  {bid.status === "Accepted" && bid.gig_status === "In Progress" && (
-                    <button
-                      className="action-btn secondary"
-                      onClick={() => onDeliver(bid.gig_id)}
-                      title="Mark work as delivered for client review"
-                    >
-                      🚀 Deliver Work
-                    </button>
-                  )}
-
-                  {bid.status === "Accepted" && bid.gig_status === "Submitted" && (
-                    <span style={{ fontSize: "9px", fontStyle: "italic", color: "#4f46e5" }}>
-                      ✓ Work Submitted
-                    </span>
-                  )}
-
-                  {bid.status === "Accepted" && bid.gig_status === "Completed" && (
-                    <button
-                      className="action-btn primary"
-                      onClick={() => onReview(bid)}
-                    >
-                      Review Client
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {bid.status === "Accepted" && (
-                <div className="accepted-contact-banner" style={{ margin: "4px 0 0" }}>
-                  <div>
-                    <strong>🎉 Proposal Accepted!</strong>
-                    <p>Client: <strong>{bid.client_name}</strong> {bid.client_department ? `(${bid.client_department})` : ""}</p>
+            <div className="simple-row" key={bid.bid_id}>
+              <span className="gig-symbol blue">✦</span>
+              <div>
+                <strong>{bid.gig_title || `Gig #${bid.gig_id}`}</strong>
+                <small>Client: {bid.client_name || "Campus Client"}{bid.gig_status ? ` · Gig Status: ${bid.gig_status}` : ""}</small>
+                {bid.status === "Accepted" && (
+                  <div className="accepted-contact-chip">
+                    <span>🎉 Accepted · Client: <strong>{bid.client_name}</strong></span>
+                    {bid.client_email && (
+                      <EmailChip
+                        email={bid.client_email}
+                        label={`✉️ Email Client (${bid.client_email})`}
+                        onNotice={onNotice}
+                      />
+                    )}
                   </div>
-                  {bid.client_email && (
-                    <EmailChip
-                      email={bid.client_email}
-                      label={`✉️ Email Client (${bid.client_email})`}
-                      onNotice={onNotice}
-                    />
-                  )}
-                </div>
-              )}
+                )}
+              </div>
+              <b>${bid.proposed_price}</b>
+              <em className={`proposal-${bid.status.toLowerCase()}`}>{bid.status}</em>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", justifyContent: "flex-end" }}>
+                {bid.status === "Pending" && (
+                  <button
+                    type="button"
+                    style={{ background: "#fee2e2", color: "#dc2626", border: 0, padding: "4px 8px", borderRadius: "4px", fontSize: "10px", fontWeight: 700, cursor: "pointer" }}
+                    onClick={() => onDeleteBid(bid.bid_id)}
+                    title="Withdraw proposal"
+                  >
+                    Withdraw
+                  </button>
+                )}
+
+                {bid.status === "Accepted" && bid.gig_status === "In Progress" && (
+                  <button
+                    type="button"
+                    className="action-btn secondary"
+                    onClick={() => onDeliver(bid.gig_id)}
+                    title="Mark work as delivered for client review"
+                  >
+                    🚀 Deliver Work
+                  </button>
+                )}
+
+                {bid.status === "Accepted" && bid.gig_status === "Submitted" && (
+                  <span style={{ fontSize: "9px", fontStyle: "italic", color: "#4f46e5" }}>
+                    ✓ Work Submitted
+                  </span>
+                )}
+
+                {bid.status === "Accepted" && bid.gig_status === "Completed" && (
+                  <button
+                    type="button"
+                    className="action-btn primary"
+                    onClick={() => onReview(bid)}
+                  >
+                    Review Client
+                  </button>
+                )}
+              </div>
             </div>
           ))
         ) : (
