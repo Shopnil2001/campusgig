@@ -342,8 +342,13 @@ try {
         }
 
         $pdo->beginTransaction();
-        $stmt = $pdo->prepare('UPDATE gigs SET status = ?, submitted_at = CASE WHEN ? = "Submitted" THEN NOW() ELSE submitted_at END, completed_at = CASE WHEN ? = "Completed" THEN NOW() ELSE completed_at END WHERE gig_id = ?');
-        $stmt->execute([$newStatus, $newStatus, $newStatus, $gigId]);
+        try {
+            $stmt = $pdo->prepare('UPDATE gigs SET status = ?, submitted_at = CASE WHEN ? = "Submitted" THEN NOW() ELSE submitted_at END, completed_at = CASE WHEN ? = "Completed" THEN NOW() ELSE completed_at END WHERE gig_id = ?');
+            $stmt->execute([$newStatus, $newStatus, $newStatus, $gigId]);
+        } catch (Throwable) {
+            $stmt = $pdo->prepare('UPDATE gigs SET status = ? WHERE gig_id = ?');
+            $stmt->execute([$newStatus, $gigId]);
+        }
 
         if ($newStatus === 'Completed') {
             try {

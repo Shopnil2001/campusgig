@@ -369,10 +369,18 @@ export default function Home() {
       const response = await fetch(`${API}/index.php?action=${action}`, {
         method: body ? "POST" : "GET",
         headers: { "Content-Type": "application/json" },
-        body: body ? JSON.stringify({ ...body, user_id: user?.user_id || 1 }) : undefined,
+        body: body
+          ? JSON.stringify({
+              ...body,
+              user_id: user?.user_id || 1,
+              user_role: user?.role_flag || "student",
+            })
+          : undefined,
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      if (!response.ok) {
+        throw new Error(data.details ? `${data.error} (${data.details})` : (data.error || "Request failed"));
+      }
       showNotice(data.message ?? "Action completed successfully");
       void loadGigs();
       void loadUserData();
