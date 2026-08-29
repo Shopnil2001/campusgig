@@ -295,18 +295,35 @@ try {
         $gigId = (int) $body['gig_id'];
         $newStatus = (string) $body['status'];
 
-        $stmt = $pdo->prepare('UPDATE gigs SET status = ?, submitted_at = CASE WHEN ? = "Submitted" THEN NOW() ELSE submitted_at END, completed_at = CASE WHEN ? = "Completed" THEN NOW() ELSE completed_at END WHERE gig_id = ? AND (client_id = ? OR EXISTS (SELECT 1 FROM bids WHERE bids.gig_id = gigs.gig_id AND freelancer_id = ? AND status = "Accepted"))');
-        $stmt->execute([$newStatus, $newStatus, $newStatus, $gigId, $userId, $userId]);
-        if (!$stmt->rowCount()) respond(['error' => 'You cannot update this gig.'], 403);
+        $checkStmt = $pdo->prepare('SELECT client_id, budget, status FROM gigs WHERE gig_id = ?');
+        $checkStmt->execute([$gigId]);
+        $gig = $checkStmt->fetch();
+        if (!$gig) respond(['error' => 'Gig not found.'], 404);
+
+        $isClient = ((int)$gig['client_id'] === $userId);
+        $bidCheck = $pdo->prepare('SELECT freelancer_id, proposed_price FROM bids WHERE gig_id = ? AND status = "Accepted"');
+        $bidCheck->execute([$gigId]);
+        $acceptedBid = $bidCheck->fetch();
+        $isFreelancer = ($acceptedBid && (int)$acceptedBid['freelancer_id'] === $userId);
+
+        if (!$isClient && !$isFreelancer && ($body['user_role'] ?? '') !== 'admin') {
+            respond(['error' => 'You are not authorized to update this gig status.'], 403);
+        }
+
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare('UPDATE gigs SET status = ?, submitted_at = CASE WHEN ? = "Submitted" THEN NOW() ELSE submitted_at END, completed_at = CASE WHEN ? = "Completed" THEN NOW() ELSE completed_at END WHERE gig_id = ?');
+        $stmt->execute([$newStatus, $newStatus, $newStatus, $gigId]);
 
         if ($newStatus === 'Completed') {
             try {
-                $txStmt = $pdo->prepare("INSERT INTO transactions (gig_id, amount, payment_status, completed_at) SELECT g.gig_id, COALESCE(MAX(b.proposed_price), g.budget), 'Pending', NOW() FROM gigs g LEFT JOIN bids b ON b.gig_id = g.gig_id AND b.status = 'Accepted' WHERE g.gig_id = ? GROUP BY g.gig_id, g.budget ON DUPLICATE KEY UPDATE completed_at = NOW()");
-                $txStmt->execute([$gigId]);
+                $amount = $acceptedBid ? (float)$acceptedBid['proposed_price'] : (float)$gig['budget'];
+                $txStmt = $pdo->prepare("INSERT INTO transactions (gig_id, amount, payment_status, completed_at) VALUES (?, ?, 'Paid', NOW()) ON DUPLICATE KEY UPDATE amount = VALUES(amount), payment_status = 'Paid', completed_at = NOW()");
+                $txStmt->execute([$gigId, $amount]);
             } catch (Throwable) {
-                // Trigger might have already handled it or duplicate
+                // Ignore duplicate or trigger handled
             }
         }
+        $pdo->commit();
 
         respond(['message' => 'Gig marked ' . $newStatus . '.']);
     }
