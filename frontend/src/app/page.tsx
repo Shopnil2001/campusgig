@@ -396,7 +396,13 @@ export default function Home() {
   }
 
   async function openGig(gig: Gig) {
-    setSelectedGig(gig);
+    const initialGig: Gig = {
+      ...gig,
+      client_id: gig.client_id || user?.user_id || 0,
+      client_name: gig.client_name || user?.name || "Campus Client",
+      department: gig.department || user?.department || "",
+    };
+    setSelectedGig(initialGig);
     try {
       const activeId = user?.user_id || 0;
       const response = await fetch(`${API}/index.php?action=gig&gig_id=${gig.gig_id}&user_id=${activeId}`);
@@ -404,9 +410,9 @@ export default function Home() {
         const data = await response.json();
         if (data.gig) {
           setSelectedGig({
-            ...gig,
+            ...initialGig,
             ...data.gig,
-            skills: data.gig.skills || gig.skills,
+            skills: data.gig.skills || initialGig.skills,
           });
         }
         if (Array.isArray(data.bids)) {
