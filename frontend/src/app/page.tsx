@@ -234,41 +234,44 @@ export default function Home() {
   }, [mounted]);
 
   async function loadUserData() {
-    if (!connected || !user) return;
+    if (!user) return;
     setLoadingUserData(true);
     try {
-      const myGigsRes = await fetch(`${API}/index.php?action=my_gigs&user_id=${user.user_id}`);
-      if (myGigsRes.ok) {
-        const data = await myGigsRes.json();
-        if (Array.isArray(data.gigs)) setMyGigs(data.gigs);
+      const [myGigsRes, myBidsRes, txRes, meRes, adminRes] = await Promise.allSettled([
+        fetch(`${API}/index.php?action=my_gigs&user_id=${user.user_id}`).then((r) => (r.ok ? r.json() : null)),
+        fetch(`${API}/index.php?action=my_bids&user_id=${user.user_id}`).then((r) => (r.ok ? r.json() : null)),
+        fetch(`${API}/index.php?action=transactions&user_id=${user.user_id}`).then((r) => (r.ok ? r.json() : null)),
+        fetch(`${API}/index.php?action=me&user_id=${user.user_id}`).then((r) => (r.ok ? r.json() : null)),
+        user.role_flag === "admin"
+          ? fetch(`${API}/index.php?action=admin&user_id=${user.user_id}`).then((r) => (r.ok ? r.json() : null))
+          : Promise.resolve(null),
+      ]);
+
+      if (myGigsRes.status === "fulfilled" && myGigsRes.value && Array.isArray(myGigsRes.value.gigs)) {
+        setMyGigs(myGigsRes.value.gigs);
       }
-      const myBidsRes = await fetch(`${API}/index.php?action=my_bids&user_id=${user.user_id}`);
-      if (myBidsRes.ok) {
-        const data = await myBidsRes.json();
-        if (Array.isArray(data.bids)) setMyBids(data.bids);
+      if (myBidsRes.status === "fulfilled" && myBidsRes.value && Array.isArray(myBidsRes.value.bids)) {
+        setMyBids(myBidsRes.value.bids);
       }
-      const txRes = await fetch(`${API}/index.php?action=transactions&user_id=${user.user_id}`);
-      if (txRes.ok) {
-        const data = await txRes.json();
-        if (Array.isArray(data.transactions)) setTransactions(data.transactions);
+      if (txRes.status === "fulfilled" && txRes.value && Array.isArray(txRes.value.transactions)) {
+        setTransactions(txRes.value.transactions);
       }
-      const meRes = await fetch(`${API}/index.php?action=me&user_id=${user.user_id}`);
-      if (meRes.ok) {
-        const data = await meRes.json();
-        if (data.user) {
-          setUser((prev) => (prev ? { ...prev, ...data.user } : data.user));
-        }
+      if (meRes.status === "fulfilled" && meRes.value && meRes.value.user) {
+        const freshUser = meRes.value.user;
+        setUser((prev) => {
+          if (!prev) return freshUser;
+          if (prev.average_rating === freshUser.average_rating && prev.name === freshUser.name && prev.department === freshUser.department && JSON.stringify(prev.skills) === JSON.stringify(freshUser.skills)) {
+            return prev;
+          }
+          return { ...prev, ...freshUser };
+        });
       }
-      if (user.role_flag === "admin") {
-        const adminRes = await fetch(`${API}/index.php?action=admin&user_id=${user.user_id}`);
-        if (adminRes.ok) {
-          const data = await adminRes.json();
-          if (Array.isArray(data.disputes)) setDisputes(data.disputes);
-          if (Array.isArray(data.top_freelancers)) setTopFreelancers(data.top_freelancers);
-        }
+      if (adminRes.status === "fulfilled" && adminRes.value) {
+        if (Array.isArray(adminRes.value.disputes)) setDisputes(adminRes.value.disputes);
+        if (Array.isArray(adminRes.value.top_freelancers)) setTopFreelancers(adminRes.value.top_freelancers);
       }
-    } catch {
-      // Ignored
+    } catch (e) {
+      console.error("loadUserData error:", e);
     } finally {
       setLoadingUserData(false);
     }
@@ -283,9 +286,13 @@ export default function Home() {
 
   useEffect(() => {
     if (view === "My gigs" || view === "My bids" || view === "Transactions" || view === "Admin" || view === "Profile") {
-      void loadUserData();
+      if (user?.user_id) {
+        void loadUserData();
+      } else {
+        setLoadingUserData(false);
+      }
     }
-  }, [view, user]);
+  }, [view, user?.user_id]);
 
   async function request(action: string, body?: Record<string, unknown>) {
     if (!user && (action === "create_gig" || action === "create_bid" || action === "review" || action === "dispute" || action === "update_skills")) {
@@ -606,10 +613,12 @@ export default function Home() {
 
         {user ? (
           <div className="campus-side-footer">
-            <div className={`campus-avatar ${user.avatar_color}`}>{initials}</div>
-            <div style={{ overflow: "hidden" }}>
-              <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user.name}</strong>
-              <small>{user.department}</small>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, cursor: "pointer", overflow: "hidden" }} onClick={() => setView("Profile")} title="View Profile">
+              <div className={`campus-avatar ${user.avatar_color}`}>{initials}</div>
+              <div style={{ overflow: "hidden" }}>
+                <strong style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "block" }}>{user.name}</strong>
+                <small>{user.department}</small>
+              </div>
             </div>
             <button
               onClick={() => {
@@ -658,7 +667,7 @@ export default function Home() {
           <div className="header-actions">
             {user ? (
               <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <div className="header-user">
+                <div className="header-user" onClick={() => setView("Profile")} style={{ cursor: "pointer" }} title="View Profile">
                   <span className={`campus-avatar ${user.avatar_color}`}>{initials}</span>
                   <span>
                     <strong>{user.name}</strong>
@@ -1227,6 +1236,10 @@ export default function Home() {
           user={user}
           onClose={() => setSelectedGig(null)}
           onBid={() => (user ? setModal("bid") : setModal("login"))}
+          onReview={(gig) => {
+            setReviewGig(gig);
+            setModal("review");
+          }}
           request={request}
         />
       )}
@@ -1686,6 +1699,7 @@ function GigDrawer({
   user,
   onClose,
   onBid,
+  onReview,
   request,
 }: {
   gig: Gig;
@@ -1694,6 +1708,7 @@ function GigDrawer({
   user: User | null;
   onClose: () => void;
   onBid: () => void;
+  onReview?: (gig: Gig) => void;
   request: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
 }) {
   const isOwner = user && gig.client_id === user.user_id;
@@ -1763,6 +1778,16 @@ function GigDrawer({
         {!isOwner && gig.status === "Open" && (
           <button className="drawer-cta" onClick={onBid}>
             Submit a proposal <span>→</span>
+          </button>
+        )}
+
+        {user && gig.status === "Completed" && (user.user_id === gig.client_id || user.user_id === gig.accepted_freelancer_id) && onReview && (
+          <button
+            className="drawer-cta"
+            style={{ marginTop: "12px", background: "linear-gradient(135deg, #10b981, #059669)" }}
+            onClick={() => onReview(gig)}
+          >
+            ★ Leave a Review for this Gig
           </button>
         )}
 
