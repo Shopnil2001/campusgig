@@ -209,6 +209,10 @@ export default function Home() {
   const [showSwitcher, setShowSwitcher] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  // Global & Form Loading States
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   // Restore session from localStorage on initial mount
   useEffect(() => {
     setMounted(true);
@@ -342,12 +346,15 @@ export default function Home() {
     }
   }, [view, user?.user_id]);
 
-  async function request(action: string, body?: Record<string, unknown>) {
+  async function request(action: string, body?: Record<string, unknown>, loadingMsg?: string) {
     if (!user && (action === "create_gig" || action === "create_bid" || action === "review" || action === "dispute" || action === "update_skills" || action === "create_skill")) {
       setModal("login");
       showNotice("Please sign in to perform this action.");
       return null;
     }
+
+    setLoadingAction(loadingMsg || "Processing request...");
+    setIsSubmitting(true);
 
     try {
       const response = await fetch(`${API}/index.php?action=${action}`, {
@@ -377,6 +384,9 @@ export default function Home() {
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Action failed. Please try again.");
       return null;
+    } finally {
+      setLoadingAction(null);
+      setIsSubmitting(false);
     }
   }
 
@@ -417,6 +427,9 @@ export default function Home() {
     const email = String(form.get("email") || "").toLowerCase().trim();
     const password = String(form.get("password") || "");
 
+    setIsSubmitting(true);
+    setLoadingAction("Signing you in...");
+
     try {
       const res = await fetch(`${API}/index.php?action=login`, {
         method: "POST",
@@ -440,6 +453,9 @@ export default function Home() {
       } else {
         showNotice(err instanceof Error ? err.message : "Sign in failed.");
       }
+    } finally {
+      setIsSubmitting(false);
+      setLoadingAction(null);
     }
   }
 
@@ -457,6 +473,9 @@ export default function Home() {
       skills: selectedSkillIds,
     };
 
+    setIsSubmitting(true);
+    setLoadingAction("Creating your student account...");
+
     try {
       const res = await fetch(`${API}/index.php?action=register`, {
         method: "POST",
@@ -472,6 +491,9 @@ export default function Home() {
       showNotice(`Account registered! Welcome to CampusGigs, ${data.user.name}.`);
     } catch (err) {
       showNotice(err instanceof Error ? err.message : "Registration failed.");
+    } finally {
+      setIsSubmitting(false);
+      setLoadingAction(null);
     }
   }
 
@@ -488,7 +510,7 @@ export default function Home() {
       skills: skillIds,
     };
 
-    await request("create_gig", payload);
+    await request("create_gig", payload, "Publishing your gig...");
   }
 
   async function submitEditGig(e: FormEvent<HTMLFormElement>) {
@@ -505,13 +527,13 @@ export default function Home() {
       skills: skillIds,
     };
 
-    await request("edit_gig", payload);
+    await request("edit_gig", payload, "Saving gig changes...");
     setEditingGig(null);
   }
 
   async function handleDeleteGig(gigId: number) {
     if (!confirm("Are you sure you want to delete this gig?")) return;
-    await request("delete_gig", { gig_id: gigId });
+    await request("delete_gig", { gig_id: gigId }, "Deleting gig...");
   }
 
   async function submitBid(e: FormEvent<HTMLFormElement>) {
@@ -524,12 +546,12 @@ export default function Home() {
       message: String(form.get("message") || ""),
     };
 
-    await request("create_bid", payload);
+    await request("create_bid", payload, "Submitting your proposal...");
   }
 
   async function handleDeleteBid(bidId: number) {
     if (!confirm("Are you sure you want to withdraw this proposal?")) return;
-    await request("delete_bid", { bid_id: bidId });
+    await request("delete_bid", { bid_id: bidId }, "Withdrawing proposal...");
   }
 
   async function submitReview(e: FormEvent<HTMLFormElement>) {
@@ -546,7 +568,7 @@ export default function Home() {
       comment: String(form.get("comment") || ""),
     };
 
-    await request("review", payload);
+    await request("review", payload, "Publishing review...");
     setReviewGig(null);
   }
 
@@ -559,7 +581,7 @@ export default function Home() {
       reason: String(form.get("reason") || ""),
     };
 
-    await request("dispute", payload);
+    await request("dispute", payload, "Filing dispute with administration...");
     setDisputeGig(null);
   }
 
@@ -567,12 +589,12 @@ export default function Home() {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
     const selectedSkills = form.getAll("skills").map(Number);
-    await request("update_skills", { skills: selectedSkills });
+    await request("update_skills", { skills: selectedSkills }, "Saving your skills profile...");
     setModal(null);
   }
 
   async function submitAddSkill(skillName: string, category: string) {
-    const res = await request("create_skill", { skill_name: skillName, category });
+    const res = await request("create_skill", { skill_name: skillName, category }, "Adding new skill category...");
     if (res && Array.isArray((res as { skills?: Skill[] }).skills)) {
       setSkills((res as { skills: Skill[] }).skills);
     }
@@ -995,7 +1017,7 @@ export default function Home() {
                   onNotice={showNotice}
                   onDeleteBid={(bidId) => void handleDeleteBid(bidId)}
                   onDeliver={async (gigId) => {
-                    await request("update_status", { gig_id: gigId, status: "Submitted" });
+                    await request("update_status", { gig_id: gigId, status: "Submitted" }, "Delivering work for client review...");
                   }}
                   onReview={(bid) => {
                     setReviewGig({
@@ -1046,7 +1068,7 @@ export default function Home() {
                   skills={skills}
                   onAddSkill={submitAddSkill}
                   onResolve={async (disputeId, resolution) => {
-                    await request("resolve_dispute", { dispute_id: disputeId, resolution });
+                    await request("resolve_dispute", { dispute_id: disputeId, resolution }, "Resolving dispute...");
                   }}
                 />
               ) : (
@@ -1085,7 +1107,7 @@ export default function Home() {
         </section>
 
         {modal === "login" && (
-          <Modal title="Sign In to CampusGigs" close={() => setModal(null)}>
+          <Modal title="Sign In to CampusGigs" close={() => !isSubmitting && setModal(null)}>
             <form className="modal-form" onSubmit={submitLogin}>
               <label>
                 Student Email
@@ -1096,8 +1118,16 @@ export default function Home() {
                 <input name="password" type="password" required placeholder="••••••••" defaultValue="password" />
               </label>
 
-              <button className="modal-submit">
-                Sign In <span>→</span>
+              <button className="modal-submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <span className="cg-spinner" /> Signing in...
+                  </>
+                ) : (
+                  <>
+                    Sign In <span>→</span>
+                  </>
+                )}
               </button>
 
               <p className="modal-help">
@@ -1108,7 +1138,7 @@ export default function Home() {
         )}
 
         {modal === "register" && (
-          <Modal title="Join CampusGigs" close={() => setModal(null)}>
+          <Modal title="Join CampusGigs" close={() => !isSubmitting && setModal(null)}>
             <form className="modal-form" onSubmit={submitRegister}>
               <label>
                 Full Name
@@ -1154,15 +1184,23 @@ export default function Home() {
                 </div>
               </label>
 
-              <button className="modal-submit">
-                Create Account & Join <span>→</span>
+              <button className="modal-submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <span className="cg-spinner" /> Creating Account...
+                  </>
+                ) : (
+                  <>
+                    Create Account & Join <span>→</span>
+                  </>
+                )}
               </button>
             </form>
           </Modal>
         )}
 
         {modal === "post" && user && (
-          <Modal title="Post a New Gig" close={() => setModal(null)}>
+          <Modal title="Post a New Gig" close={() => !isSubmitting && setModal(null)}>
             <form className="modal-form" onSubmit={submitCreateGig}>
               <label>
                 Gig Title
@@ -1195,15 +1233,23 @@ export default function Home() {
                 </div>
               </label>
 
-              <button className="modal-submit">
-                Publish Gig <span>→</span>
+              <button className="modal-submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <span className="cg-spinner" /> Publishing Gig...
+                  </>
+                ) : (
+                  <>
+                    Publish Gig <span>→</span>
+                  </>
+                )}
               </button>
             </form>
           </Modal>
         )}
 
         {modal === "edit" && editingGig && (
-          <Modal title="Edit Gig" close={() => setModal(null)}>
+          <Modal title="Edit Gig" close={() => !isSubmitting && setModal(null)}>
             <form className="modal-form" onSubmit={submitEditGig}>
               <label>
                 Gig Title
@@ -1241,15 +1287,23 @@ export default function Home() {
                 </div>
               </label>
 
-              <button className="modal-submit">
-                Save Changes <span>→</span>
+              <button className="modal-submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <span className="cg-spinner" /> Saving Changes...
+                  </>
+                ) : (
+                  <>
+                    Save Changes <span>→</span>
+                  </>
+                )}
               </button>
             </form>
           </Modal>
         )}
 
         {modal === "bid" && selectedGig && (
-          <Modal title="Submit Proposal" close={() => setModal(null)}>
+          <Modal title="Submit Proposal" close={() => !isSubmitting && setModal(null)}>
             <p className="modal-context">
               Applying for: <strong>{selectedGig.title}</strong> (Client Budget: ${selectedGig.budget})
             </p>
@@ -1263,15 +1317,23 @@ export default function Home() {
                 <textarea name="message" required rows={4} placeholder="Introduce yourself, your experience, and how you will solve this problem..." />
               </label>
 
-              <button className="modal-submit">
-                Submit Proposal <span>→</span>
+              <button className="modal-submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <span className="cg-spinner" /> Submitting Proposal...
+                  </>
+                ) : (
+                  <>
+                    Submit Proposal <span>→</span>
+                  </>
+                )}
               </button>
             </form>
           </Modal>
         )}
 
         {modal === "review" && reviewGig && (
-          <Modal title="Leave a Review" close={() => setModal(null)}>
+          <Modal title="Leave a Review" close={() => !isSubmitting && setModal(null)}>
             <p className="modal-context">
               Reviewing: <strong>{reviewGig.title}</strong>
             </p>
@@ -1296,15 +1358,23 @@ export default function Home() {
                 <textarea name="comment" required rows={4} placeholder="Describe the collaboration quality, communication, and punctuality..." />
               </label>
 
-              <button className="modal-submit">
-                Submit Review <span>→</span>
+              <button className="modal-submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <span className="cg-spinner" /> Submitting Review...
+                  </>
+                ) : (
+                  <>
+                    Submit Review <span>→</span>
+                  </>
+                )}
               </button>
             </form>
           </Modal>
         )}
 
         {modal === "dispute" && disputeGig && (
-          <Modal title="Raise Dispute to Admin" close={() => setModal(null)}>
+          <Modal title="Raise Dispute to Admin" close={() => !isSubmitting && setModal(null)}>
             <p className="modal-context">
               Reporting issue on: <strong>{disputeGig.title}</strong>
             </p>
@@ -1314,15 +1384,23 @@ export default function Home() {
                 <textarea name="reason" required rows={5} placeholder="Describe the disagreement, deliverable issue, or payment concern in detail..." />
               </label>
 
-              <button className="action-btn danger" style={{ width: "100%", padding: "12px", fontSize: "13px" }}>
-                Submit Dispute to Admin <span>→</span>
+              <button className="action-btn danger" disabled={isSubmitting} style={{ width: "100%", padding: "12px", fontSize: "13px" }}>
+                {isSubmitting ? (
+                  <>
+                    <span className="cg-spinner" /> Submitting Dispute...
+                  </>
+                ) : (
+                  <>
+                    Submit Dispute to Admin <span>→</span>
+                  </>
+                )}
               </button>
             </form>
           </Modal>
         )}
 
         {modal === "skills" && user && (
-          <Modal title="Manage Your Skills" close={() => setModal(null)}>
+          <Modal title="Manage Your Skills" close={() => !isSubmitting && setModal(null)}>
             <form className="modal-form" onSubmit={submitSkills}>
               <p className="modal-context">Select the skill categories you offer to campus clients.</p>
               <div className="skills-checkbox-grid">
@@ -1338,8 +1416,16 @@ export default function Home() {
                   </label>
                 ))}
               </div>
-              <button className="modal-submit">
-                Save Skills <span>→</span>
+              <button className="modal-submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <span className="cg-spinner" /> Saving Skills...
+                  </>
+                ) : (
+                  <>
+                    Save Skills <span>→</span>
+                  </>
+                )}
               </button>
             </form>
           </Modal>
@@ -1352,6 +1438,7 @@ export default function Home() {
             reviews={gigReviews}
             user={user}
             myProposal={myProposalForSelectedGig}
+            isSubmitting={isSubmitting}
             onClose={() => setSelectedGig(null)}
             onBid={() => (user ? setModal("bid") : setModal("login"))}
             onDeleteBid={(bidId) => void handleDeleteBid(bidId)}
@@ -1365,6 +1452,17 @@ export default function Home() {
             }}
             request={request}
           />
+        )}
+
+        {/* Global Action Loading Overlay */}
+        {loadingAction && (
+          <div className="action-loading-overlay">
+            <div className="action-loading-card">
+              <div className="action-loading-spinner" />
+              <strong>{loadingAction}</strong>
+              <small>Communicating with live database...</small>
+            </div>
+          </div>
         )}
 
         {notice && (
@@ -1488,7 +1586,7 @@ function MyGigs({
   onDelete: (gigId: number) => void;
   onReview: (gig: Gig) => void;
   onDispute: (gig: Gig) => void;
-  request: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
+  request: (action: string, body?: Record<string, unknown>, msg?: string) => Promise<unknown>;
 }) {
   const safeGigs = gigs || [];
   return (
@@ -1524,7 +1622,7 @@ function MyGigs({
                     </button>
                     <button
                       className="action-btn danger"
-                      onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Cancelled" })}
+                      onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Cancelled" }, "Cancelling gig...")}
                       style={{ padding: "5px 10px", fontSize: "11px" }}
                     >
                       Cancel
@@ -1543,7 +1641,7 @@ function MyGigs({
                 {(gig.status === "In Progress" || gig.status === "Submitted") && (
                   <button
                     className="action-btn secondary"
-                    onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Completed" })}
+                    onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Completed" }, "Completing gig and recording transaction...")}
                   >
                     {gig.status === "Submitted" ? "Approve Delivery & Complete" : "Complete"}
                   </button>
@@ -1817,11 +1915,13 @@ function AdminPanel({
             value={newSkillName}
             onChange={(e) => setNewSkillName(e.target.value)}
             required
+            disabled={isAddingSkill}
           />
           <select
             style={{ flex: "1 1 140px", padding: "10px 14px", fontSize: "12px", border: "1px solid var(--line)", borderRadius: "8px", background: "#fff" }}
             value={newSkillCategory}
             onChange={(e) => setNewSkillCategory(e.target.value)}
+            disabled={isAddingSkill}
           >
             <option value="Technology">Technology</option>
             <option value="Creative">Creative</option>
@@ -1837,7 +1937,13 @@ function AdminPanel({
             disabled={isAddingSkill}
             style={{ padding: "10px 20px" }}
           >
-            {isAddingSkill ? "Adding..." : "+ Add Skill"}
+            {isAddingSkill ? (
+              <>
+                <span className="cg-spinner" /> Adding...
+              </>
+            ) : (
+              "+ Add Skill"
+            )}
           </button>
         </form>
 
@@ -1996,6 +2102,7 @@ function GigDrawer({
   reviews,
   user,
   myProposal,
+  isSubmitting,
   onClose,
   onBid,
   onDeleteBid,
@@ -2008,12 +2115,13 @@ function GigDrawer({
   reviews: Review[];
   user: User | null;
   myProposal?: Bid | null;
+  isSubmitting?: boolean;
   onClose: () => void;
   onBid: () => void;
   onDeleteBid: (bidId: number) => void;
   onReview: () => void;
   onDispute: () => void;
-  request: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
+  request: (action: string, body?: Record<string, unknown>, msg?: string) => Promise<unknown>;
 }) {
   const isOwner = Boolean(user && Number(gig.client_id) === Number(user.user_id));
   const isAcceptedFreelancer = Boolean(user && Number(gig.accepted_freelancer_id) === Number(user.user_id));
@@ -2059,7 +2167,7 @@ function GigDrawer({
             <small style={{ color: "var(--muted)", fontSize: "11px", fontWeight: 700, display: "block", marginBottom: "6px" }}>REQUIRED SKILLS</small>
             <div className="tag-row">
               {gig.skills.split(",").map((s, i) => (
-                <button key={i}>#{s.trim()}</button>
+                <button key={i} type="button">#{s.trim()}</button>
               ))}
             </div>
           </div>
@@ -2082,7 +2190,11 @@ function GigDrawer({
                     </div>
                     <b>${bid.proposed_price}</b>
                     {bid.status === "Pending" && (
-                      <button className="action-btn primary" onClick={() => void request("accept_bid", { bid_id: bid.bid_id })}>
+                      <button
+                        className="action-btn primary"
+                        disabled={isSubmitting}
+                        onClick={() => void request("accept_bid", { bid_id: bid.bid_id }, "Accepting proposal...")}
+                      >
                         Accept Proposal
                       </button>
                     )}
@@ -2115,7 +2227,7 @@ function GigDrawer({
                 <small style={{ color: "var(--muted)" }}>Status: {myProposal.status}</small>
               </div>
               {myProposal.status === "Pending" && (
-                <button className="action-btn danger" onClick={() => onDeleteBid(myProposal.bid_id)}>
+                <button className="action-btn danger" disabled={isSubmitting} onClick={() => onDeleteBid(myProposal.bid_id)}>
                   Withdraw
                 </button>
               )}
@@ -2125,8 +2237,9 @@ function GigDrawer({
           {isAcceptedFreelancer && gig.status === "In Progress" && (
             <button
               className="action-btn secondary"
+              disabled={isSubmitting}
               style={{ width: "100%", padding: "12px", fontSize: "13px" }}
-              onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Submitted" })}
+              onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Submitted" }, "Delivering work for client review...")}
             >
               🚀 Deliver Work / Mark Submitted
             </button>
@@ -2135,8 +2248,9 @@ function GigDrawer({
           {isOwner && (gig.status === "In Progress" || gig.status === "Submitted") && (
             <button
               className="action-btn secondary"
+              disabled={isSubmitting}
               style={{ width: "100%", padding: "12px", fontSize: "13px" }}
-              onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Completed" })}
+              onClick={() => void request("update_status", { gig_id: gig.gig_id, status: "Completed" }, "Approving work and completing gig...")}
             >
               {gig.status === "Submitted" ? "Approve Delivery & Complete Gig" : "Mark as Completed"}
             </button>
