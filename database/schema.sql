@@ -149,10 +149,10 @@ GROUP BY u.user_id, u.name, u.department
 ORDER BY average_rating DESC, completed_gigs DESC;
 
 INSERT INTO users (name, email, department, batch, password_hash, role_flag, avatar_color) VALUES
-('Aisha Rahman', 'aisha@campus.edu', 'Computer Science', 2026, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC9Q1bVxj9M0U6Q3u2', 'student', 'coral'),
-('Rafi Hasan', 'rafi@campus.edu', 'Electrical Engineering', 2027, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC9Q1bVxj9M0U6Q3u2', 'student', 'blue'),
-('Nadia Karim', 'nadia@campus.edu', 'Business Administration', 2026, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC9Q1bVxj9M0U6Q3u2', 'student', 'mint'),
-('CampusGigs Admin', 'admin@campus.edu', 'Administration', 2026, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC9Q1bVxj9M0U6Q3u2', 'admin', 'navy');
+('Aisha Rahman', 'aisha@campus.edu', 'Computer Science', 2026, '$2y$10$CzwM/5/c83./4/i4gHfZ/O41XEeQodA3npfiPHCQS3zaTUm2FxKVS', 'student', 'coral'),
+('Rafi Hasan', 'rafi@campus.edu', 'Electrical Engineering', 2027, '$2y$10$CzwM/5/c83./4/i4gHfZ/O41XEeQodA3npfiPHCQS3zaTUm2FxKVS', 'student', 'blue'),
+('Nadia Karim', 'nadia@campus.edu', 'Business Administration', 2026, '$2y$10$CzwM/5/c83./4/i4gHfZ/O41XEeQodA3npfiPHCQS3zaTUm2FxKVS', 'student', 'mint'),
+('CampusGigs Admin', 'admin@campus.edu', 'Administration', 2026, '$2y$10$CzwM/5/c83./4/i4gHfZ/O41XEeQodA3npfiPHCQS3zaTUm2FxKVS', 'admin', 'navy');
 
 INSERT INTO skills (skill_name, category) VALUES ('Web Development', 'Technology'), ('Graphic Design', 'Creative'), ('Mathematics Tutoring', 'Academic'), ('Photography', 'Creative'), ('Video Editing', 'Creative'), ('Circuit Repair', 'Technical'), ('Content Writing', 'Writing'), ('Excel & Data', 'Business');
 INSERT INTO user_skills (user_id, skill_id) VALUES (1, 1), (1, 2), (1, 7), (2, 6), (2, 3), (3, 2), (3, 4), (3, 5);
