@@ -128,8 +128,9 @@ type TopFreelancer = {
   user_id: number;
   name: string;
   department: string;
+  avatar_color?: string;
   completed_gigs: number;
-  average_rating: string;
+  average_rating: string | number;
 };
 
 type Review = {
@@ -189,7 +190,7 @@ export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [skills, setSkills] = useState<Skill[]>(demoSkills);
   const [stats, setStats] = useState({ total: 12, open_count: 8, completed_count: 4, completion_rate: 33 });
-  const [view, setView] = useState<"Discover" | "My gigs" | "My bids" | "Transactions" | "Admin" | "Profile">("Discover");
+  const [view, setView] = useState<"Discover" | "Top Freelancers" | "My gigs" | "My bids" | "Transactions" | "Admin" | "Profile">("Discover");
   const [status, setStatus] = useState("Open");
   const [search, setSearch] = useState("");
   const [skillFilter, setSkillFilter] = useState(0);
@@ -259,9 +260,24 @@ export default function Home() {
     }
   }
 
+  async function loadTopFreelancers() {
+    try {
+      const res = await fetch(`${API}/index.php?action=top_freelancers`);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.top_freelancers)) {
+          setTopFreelancers(data.top_freelancers);
+        }
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
   useEffect(() => {
     if (mounted) {
       void loadGigs();
+      void loadTopFreelancers();
     }
   }, [mounted]);
 
@@ -318,13 +334,16 @@ export default function Home() {
   }, [status, skillFilter, search]);
 
   useEffect(() => {
+    if (view === "Top Freelancers" || view === "Admin") {
+      void loadTopFreelancers();
+    }
     if (view !== "Discover" && user?.user_id) {
       void loadUserData(user.user_id);
     }
   }, [view, user?.user_id]);
 
   async function request(action: string, body?: Record<string, unknown>) {
-    if (!user && (action === "create_gig" || action === "create_bid" || action === "review" || action === "dispute" || action === "update_skills")) {
+    if (!user && (action === "create_gig" || action === "create_bid" || action === "review" || action === "dispute" || action === "update_skills" || action === "create_skill")) {
       setModal("login");
       showNotice("Please sign in to perform this action.");
       return null;
@@ -344,6 +363,7 @@ export default function Home() {
 
       showNotice(data.message || "Operation completed successfully.");
       await loadGigs();
+      await loadTopFreelancers();
       if (user?.user_id) {
         await loadUserData(user.user_id);
       }
@@ -427,6 +447,7 @@ export default function Home() {
   async function submitRegister(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = new FormData(e.currentTarget);
+    const selectedSkillIds = form.getAll("skills").map(Number);
     const payload = {
       name: String(form.get("name") || "").trim(),
       email: String(form.get("email") || "").trim(),
@@ -434,6 +455,7 @@ export default function Home() {
       department: String(form.get("department") || "").trim(),
       batch: Number(form.get("batch") || 2026),
       role_flag: String(form.get("role_flag") || "student"),
+      skills: selectedSkillIds,
     };
 
     try {
@@ -550,6 +572,13 @@ export default function Home() {
     setModal(null);
   }
 
+  async function submitAddSkill(skillName: string, category: string) {
+    const res = await request("create_skill", { skill_name: skillName, category });
+    if (res && Array.isArray((res as { skills?: Skill[] }).skills)) {
+      setSkills((res as { skills: Skill[] }).skills);
+    }
+  }
+
   function quickSwitchUser(target: User) {
     handleSetUser(target);
     setShowSwitcher(false);
@@ -594,6 +623,13 @@ export default function Home() {
               onClick={() => setView("Discover")}
             >
               <span>❖</span> Discover Gigs <b>{gigs.length}</b>
+            </button>
+
+            <button
+              className={view === "Top Freelancers" ? "campus-nav-link active" : "campus-nav-link"}
+              onClick={() => setView("Top Freelancers")}
+            >
+              <span>🏆</span> Top Freelancers <b>{topFreelancers.length || 5}</b>
             </button>
 
             <p className="nav-spacer">MY WORKSPACE</p>
@@ -919,6 +955,10 @@ export default function Home() {
               </>
             )}
 
+            {view === "Top Freelancers" && (
+              <TopFreelancersView topFreelancers={topFreelancers} />
+            )}
+
             {view === "My gigs" && (
               user ? (
                 <MyGigs
@@ -1004,6 +1044,8 @@ export default function Home() {
                 <AdminPanel
                   disputes={disputes}
                   topFreelancers={topFreelancers}
+                  skills={skills}
+                  onAddSkill={submitAddSkill}
                   onResolve={async (disputeId, resolution) => {
                     await request("resolve_dispute", { dispute_id: disputeId, resolution });
                   }}
@@ -1094,15 +1136,27 @@ export default function Home() {
                 </label>
               </div>
               <label>
-                Role
+                Account Role
                 <select name="role_flag" defaultValue="student">
                   <option value="student">Student / Freelancer</option>
                   <option value="admin">Platform Administrator</option>
                 </select>
               </label>
 
+              <label>
+                Select Your Skills & Categories
+                <div className="skills-checkbox-grid">
+                  {(skills || []).map((skill) => (
+                    <label key={skill.skill_id} className="skill-checkbox-item">
+                      <input type="checkbox" name="skills" value={skill.skill_id} />
+                      <span>{skill.skill_name} ({skill.category})</span>
+                    </label>
+                  ))}
+                </div>
+              </label>
+
               <button className="modal-submit">
-                Create Account <span>→</span>
+                Create Account & Join <span>→</span>
               </button>
             </form>
           </Modal>
@@ -1136,7 +1190,7 @@ export default function Home() {
                   {(skills || []).map((skill) => (
                     <label key={skill.skill_id} className="skill-checkbox-item">
                       <input type="checkbox" name="skills" value={skill.skill_id} />
-                      <span>{skill.skill_name}</span>
+                      <span>{skill.skill_name} ({skill.category})</span>
                     </label>
                   ))}
                 </div>
@@ -1281,7 +1335,7 @@ export default function Home() {
                       value={skill.skill_id}
                       defaultChecked={user.skills?.some((s) => s.skill_id === skill.skill_id)}
                     />
-                    <span>{skill.skill_name}</span>
+                    <span>{skill.skill_name} ({skill.category})</span>
                   </label>
                 ))}
               </div>
@@ -1322,6 +1376,54 @@ export default function Home() {
         )}
       </main>
     </ErrorBoundary>
+  );
+}
+
+function TopFreelancersView({ topFreelancers }: { topFreelancers: TopFreelancer[] }) {
+  const safeTop = topFreelancers || [];
+
+  return (
+    <div className="subpage">
+      <p className="overline">CAMPUS TALENT LEADERBOARD</p>
+      <h2>Top Campus Freelancers</h2>
+      <p className="page-copy">Recognizing the highest-rated and most active student freelancers across departments.</p>
+
+      <div className="simple-list" style={{ marginTop: "24px" }}>
+        {safeTop.length > 0 ? (
+          safeTop.map((tf, index) => {
+            const rankMedal = index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : `#${index + 1}`;
+            return (
+              <div className="simple-row" key={tf.user_id} style={{ gridTemplateColumns: "40px 42px 1fr auto auto" }}>
+                <span style={{ fontSize: index < 3 ? "20px" : "14px", fontWeight: 800, color: index < 3 ? "var(--coral)" : "var(--muted)", textAlign: "center" }}>
+                  {rankMedal}
+                </span>
+                <div className={`campus-avatar ${tf.avatar_color || "coral"}`}>
+                  {getInitials(tf.name)}
+                </div>
+                <div>
+                  <strong style={{ fontSize: "14px" }}>{tf.name}</strong>
+                  <small>{tf.department} · Campus Verified</small>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <strong style={{ fontSize: "13px", color: "var(--navy)" }}>{tf.completed_gigs} Gigs</strong>
+                  <small style={{ color: "var(--muted)" }}>Completed</small>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <strong style={{ fontSize: "14px", color: "#d97706" }}>{Number(tf.average_rating || 5).toFixed(1)} ★</strong>
+                  <small style={{ color: "var(--muted)" }}>Reputation</small>
+                </div>
+              </div>
+            );
+          })
+        ) : (
+          <div style={{ padding: "48px 20px", textAlign: "center" }}>
+            <span style={{ fontSize: "40px", display: "block", marginBottom: "12px" }}>🏆</span>
+            <h3>Leaderboard Loading</h3>
+            <p className="muted-copy">Complete gigs and leave ratings to climb the campus leaderboard.</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1670,21 +1772,87 @@ function TransactionsView({
 function AdminPanel({
   disputes,
   topFreelancers,
+  skills,
+  onAddSkill,
   onResolve,
 }: {
   disputes: Dispute[];
   topFreelancers: TopFreelancer[];
+  skills: Skill[];
+  onAddSkill: (skillName: string, category: string) => Promise<void>;
   onResolve: (disputeId: number, resolution: string) => void;
 }) {
   const [resolutionText, setResolutionText] = useState("");
+  const [newSkillName, setNewSkillName] = useState("");
+  const [newSkillCategory, setNewSkillCategory] = useState("Technology");
+  const [isAddingSkill, setIsAddingSkill] = useState(false);
+
   const safeDisputes = disputes || [];
   const safeTop = topFreelancers || [];
+
+  async function handleSkillSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!newSkillName.trim()) return;
+    setIsAddingSkill(true);
+    await onAddSkill(newSkillName.trim(), newSkillCategory);
+    setNewSkillName("");
+    setIsAddingSkill(false);
+  }
 
   return (
     <div className="subpage">
       <p className="overline">ADMINISTRATION</p>
-      <h2>Dispute Resolution & Platform Metrics</h2>
-      <p className="page-copy">Manage platform disputes and view top-performing campus freelancers.</p>
+      <h2>Dispute Resolution, Skills & Metrics</h2>
+      <p className="page-copy">Manage platform disputes, add new skill categories, and review top freelancers.</p>
+
+      {/* Admin Add Skill Card */}
+      <div className="admin-box" style={{ marginTop: "20px", marginBottom: "20px" }}>
+        <h3>✨ Add New Skill Category</h3>
+        <p className="page-copy" style={{ marginBottom: "14px" }}>
+          Expand the skills database. Newly added skills immediately become available for student profiles and gig requirements.
+        </p>
+        <form onSubmit={handleSkillSubmit} style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center" }}>
+          <input
+            style={{ flex: "2 1 200px", padding: "10px 14px", fontSize: "12px", border: "1px solid var(--line)", borderRadius: "8px" }}
+            placeholder="e.g. Mobile App Development, UI/UX Design, Python..."
+            value={newSkillName}
+            onChange={(e) => setNewSkillName(e.target.value)}
+            required
+          />
+          <select
+            style={{ flex: "1 1 140px", padding: "10px 14px", fontSize: "12px", border: "1px solid var(--line)", borderRadius: "8px", background: "#fff" }}
+            value={newSkillCategory}
+            onChange={(e) => setNewSkillCategory(e.target.value)}
+          >
+            <option value="Technology">Technology</option>
+            <option value="Creative">Creative</option>
+            <option value="Academic">Academic</option>
+            <option value="Business">Business</option>
+            <option value="Technical">Technical</option>
+            <option value="Writing">Writing</option>
+            <option value="Other">Other</option>
+          </select>
+          <button
+            type="submit"
+            className="action-btn primary"
+            disabled={isAddingSkill}
+            style={{ padding: "10px 20px" }}
+          >
+            {isAddingSkill ? "Adding..." : "+ Add Skill"}
+          </button>
+        </form>
+
+        <div style={{ marginTop: "16px" }}>
+          <small style={{ color: "var(--muted)", fontSize: "11px", fontWeight: 700, display: "block", marginBottom: "6px" }}>CURRENT PLATFORM SKILLS ({skills.length}):</small>
+          <div className="tag-row">
+            {skills.map((s) => (
+              <span key={s.skill_id} style={{ background: "#f1f5f9", padding: "4px 8px", borderRadius: "6px", fontSize: "11px", color: "var(--ink)" }}>
+                {s.skill_name} <small style={{ color: "var(--muted)" }}>({s.category})</small>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
 
       <div className="admin-columns">
         <div className="admin-box">

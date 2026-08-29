@@ -66,10 +66,22 @@ try {
         ]);
         $newId = (int) $pdo->lastInsertId();
 
+        if (isset($body['skills']) && is_array($body['skills'])) {
+            $skInsert = $pdo->prepare('INSERT INTO user_skills (user_id, skill_id) VALUES (?, ?)');
+            foreach ($body['skills'] as $sid) {
+                if ((int)$sid > 0) {
+                    $skInsert->execute([$newId, (int)$sid]);
+                }
+            }
+        }
+
         $stmt = $pdo->prepare('SELECT user_id, name, email, department, batch, role_flag, avatar_color FROM users WHERE user_id = ?');
         $stmt->execute([$newId]);
         $user = $stmt->fetch();
-        $user['skills'] = [];
+        
+        $skStmt = $pdo->prepare('SELECT s.skill_id, s.skill_name, s.category FROM user_skills us JOIN skills s ON s.skill_id = us.skill_id WHERE us.user_id = ? ORDER BY s.category, s.skill_name');
+        $skStmt->execute([$newId]);
+        $user['skills'] = $skStmt->fetchAll();
         $user['average_rating'] = 5.0;
 
         $_SESSION['user_id'] = $newId;
@@ -530,6 +542,40 @@ try {
         $stmt = $pdo->prepare("UPDATE disputes SET status = 'Resolved', resolution = ?, resolved_by = ?, resolved_at = NOW() WHERE dispute_id = ?");
         $stmt->execute([trim((string)$body['resolution']), $userId, (int) $body['dispute_id']]);
         respond(['message' => 'Dispute resolved by administrator.']);
+    }
+
+    if ($action === 'create_skill' && $method === 'POST') {
+        requireAuth($userId);
+        $userStmt = $pdo->prepare('SELECT role_flag FROM users WHERE user_id = ?');
+        $userStmt->execute([$userId]);
+        if ($userStmt->fetchColumn() !== 'admin') {
+            respond(['error' => 'Only platform administrators can add new skill categories.'], 403);
+        }
+        requireFields($body, ['skill_name', 'category']);
+        $skillName = trim((string) $body['skill_name']);
+        $category = trim((string) $body['category']);
+        
+        $check = $pdo->prepare('SELECT skill_id FROM skills WHERE LOWER(skill_name) = LOWER(?)');
+        $check->execute([$skillName]);
+        if ($check->fetch()) {
+            respond(['error' => 'A skill category with this name already exists.'], 422);
+        }
+        
+        $stmt = $pdo->prepare('INSERT INTO skills (skill_name, category) VALUES (?, ?)');
+        $stmt->execute([$skillName, $category]);
+        $skillId = (int) $pdo->lastInsertId();
+        
+        $skills = $pdo->query('SELECT skill_id, skill_name, category FROM skills ORDER BY category, skill_name')->fetchAll();
+        respond(['message' => 'New skill category added successfully!', 'skill_id' => $skillId, 'skills' => $skills], 201);
+    }
+
+    if ($action === 'top_freelancers') {
+        try {
+            $top = $pdo->query('SELECT * FROM top_freelancers')->fetchAll();
+        } catch (PDOException $e) {
+            $top = $pdo->query("SELECT u.user_id, u.name, u.department, u.avatar_color, COUNT(DISTINCT CASE WHEN g.status = 'Completed' THEN g.gig_id END) AS completed_gigs, ROUND(COALESCE(AVG(r.rating), 5.0), 2) AS average_rating FROM users u LEFT JOIN bids b ON b.freelancer_id = u.user_id AND b.status = 'Accepted' LEFT JOIN gigs g ON g.gig_id = b.gig_id LEFT JOIN reviews r ON r.reviewee_id = u.user_id WHERE u.role_flag = 'student' GROUP BY u.user_id, u.name, u.department, u.avatar_color ORDER BY average_rating DESC, completed_gigs DESC LIMIT 10")->fetchAll();
+        }
+        respond(['top_freelancers' => $top]);
     }
 
     if ($action === 'admin') {
