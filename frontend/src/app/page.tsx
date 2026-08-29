@@ -157,7 +157,6 @@ export default function Home() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [stats, setStats] = useState({ total: 0, open_count: 0, completed_count: 0, completion_rate: 0 });
-  const [loadingGigs, setLoadingGigs] = useState(true);
   const [view, setView] = useState("Discover");
   const [status, setStatus] = useState("Open");
   const [search, setSearch] = useState("");
@@ -176,6 +175,9 @@ export default function Home() {
   const [connected, setConnected] = useState(false);
 
   const [mounted, setMounted] = useState(false);
+  const [loadingGigs, setLoadingGigs] = useState(true);
+  const [loadingUserData, setLoadingUserData] = useState(false);
+  const [gigsError, setGigsError] = useState(false);
 
   // Restore session
   useEffect(() => {
@@ -201,6 +203,7 @@ export default function Home() {
 
   async function loadGigs() {
     setLoadingGigs(true);
+    setGigsError(false);
     try {
       const response = await fetch(`${API}/index.php?action=dashboard&status=All`);
       if (!response.ok) throw new Error();
@@ -218,6 +221,7 @@ export default function Home() {
       setConnected(true);
     } catch {
       setConnected(false);
+      setGigsError(true);
     } finally {
       setLoadingGigs(false);
     }
@@ -231,6 +235,7 @@ export default function Home() {
 
   async function loadUserData() {
     if (!connected || !user) return;
+    setLoadingUserData(true);
     try {
       const myGigsRes = await fetch(`${API}/index.php?action=my_gigs&user_id=${user.user_id}`);
       if (myGigsRes.ok) {
@@ -264,6 +269,8 @@ export default function Home() {
       }
     } catch {
       // Ignored
+    } finally {
+      setLoadingUserData(false);
     }
   }
 
@@ -293,13 +300,13 @@ export default function Home() {
         body: body ? JSON.stringify({ ...body, user_id: user?.user_id || 1 }) : undefined,
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Request failed");
+      if (!response.ok) throw new Error(data.error);
       showNotice(data.message ?? "Action completed successfully");
       void loadGigs();
       void loadUserData();
       return data;
     } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : "Request failed. Please try again.";
+      const errMsg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
       showNotice(errMsg);
       return null;
     }
@@ -427,7 +434,10 @@ export default function Home() {
       handleSetUser(result.user);
       setModal(null);
       showNotice(`Welcome back, ${result.user.name}!`);
+      return;
     }
+
+    showNotice("We couldn't sign you in. Check your email and password and try again.");
   }
 
   async function submitRegister(event: FormEvent<HTMLFormElement>) {
@@ -444,7 +454,10 @@ export default function Home() {
       handleSetUser(result.user);
       setModal(null);
       showNotice(`Account registered! Welcome, ${result.user.name}!`);
+      return;
     }
+
+    showNotice("We couldn't create your account. Please try again.");
   }
 
   async function submitReview(event: FormEvent<HTMLFormElement>) {
@@ -695,7 +708,7 @@ export default function Home() {
               <p className="overline">
                 CAMPUS MARKETPLACE{" "}
                 <span className={connected ? "online" : "offline"}>
-                  ● {connected ? "LIVE API CONNECTED" : "API OFFLINE / CONNECTING"}
+                  ● {connected ? "LIVE" : "CONNECTING..."}
                 </span>
               </p>
               <h1>
@@ -714,17 +727,17 @@ export default function Home() {
               <div className="market-stats">
                 <div>
                   <span>Open gigs</span>
-                  <strong>{loadingGigs ? "—" : (stats.open_count || gigs.filter((g) => g.status === "Open").length || 0)}</strong>
+                  <strong>{loadingGigs ? "—" : stats.open_count}</strong>
                   <small>↗ Available on campus</small>
                 </div>
                 <div>
                   <span>Completed locally</span>
-                  <strong>{loadingGigs ? "—" : (stats.completed_count || 0)}</strong>
-                  <small>↗ 92% satisfaction</small>
+                  <strong>{loadingGigs ? "—" : stats.completed_count}</strong>
+                  <small>↗ Track record so far</small>
                 </div>
                 <div>
-                  <span>Student earners</span>
-                  <strong>{loadingGigs ? "—" : (stats.total || gigs.length || 0)}</strong>
+                  <span>Total gigs posted</span>
+                  <strong>{loadingGigs ? "—" : stats.total}</strong>
                   <small>Across departments</small>
                 </div>
                 <div className="stats-art">
@@ -760,137 +773,168 @@ export default function Home() {
                 </select>
               </div>
 
-              <div className="gig-grid">
-                {loadingGigs ? (
-                  Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="gig-card gig-card-skeleton" />
-                  ))
-                ) : filteredGigs.length ? (
-                  filteredGigs.map((gig) => (
-                    <article className="gig-card" key={gig.gig_id} onClick={() => void openGig(gig)}>
-                      <div className="gig-card-top">
-                        <span className={`gig-symbol ${gig.gig_id % 3 === 0 ? "mint" : gig.gig_id % 2 === 0 ? "blue" : "coral"}`}>✦</span>
-                        <span className={`gig-status ${gig.status.toLowerCase().replace(" ", "-")}`}>
-                          <i />
-                          {gig.status}
-                        </span>
-                      </div>
+              {loadingGigs ? (
+                <div className="gig-grid">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div className="gig-card gig-card-skeleton" key={i}>
+                      <div className="skeleton-line skeleton-badge" />
+                      <div className="skeleton-line skeleton-title" />
+                      <div className="skeleton-line skeleton-text" />
+                      <div className="skeleton-line skeleton-text short" />
+                      <div className="skeleton-line skeleton-footer" />
+                    </div>
+                  ))}
+                </div>
+              ) : gigsError ? (
+                <div className="empty-state">
+                  <span>⚠</span>
+                  <h3>Couldn&apos;t load gigs</h3>
+                  <p>The marketplace server didn&apos;t respond. Check your connection and try again.</p>
+                  <button className="action-btn primary" onClick={() => void loadGigs()} style={{ marginTop: "12px" }}>
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <div className="gig-grid">
+                  {filteredGigs.length ? (
+                    filteredGigs.map((gig) => (
+                      <article className="gig-card" key={gig.gig_id} onClick={() => void openGig(gig)}>
+                        <div className="gig-card-top">
+                          <span className={`gig-symbol ${gig.gig_id % 3 === 0 ? "mint" : gig.gig_id % 2 === 0 ? "blue" : "coral"}`}>✦</span>
+                          <span className={`gig-status ${gig.status.toLowerCase().replace(" ", "-")}`}>
+                            <i />
+                            {gig.status}
+                          </span>
+                        </div>
 
-                      <h3>{gig.title}</h3>
-                      <p>{gig.description}</p>
+                        <h3>{gig.title}</h3>
+                        <p>{gig.description}</p>
 
-                      <div className="tag-row">
-                        {(gig.skills ?? "General")
-                          .split(", ")
-                          .slice(0, 3)
-                          .map((tag) => (
-                            <button
-                              key={tag}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const found = skills.find((s) => s.skill_name.toLowerCase() === tag.toLowerCase());
-                                if (found) setSkillFilter(found.skill_id);
-                                else setSearch(tag);
-                              }}
-                              title={`Filter by ${tag}`}
-                            >
-                              {tag}
-                            </button>
-                          ))}
-                      </div>
+                        <div className="tag-row">
+                          {(gig.skills ?? "General")
+                            .split(", ")
+                            .slice(0, 3)
+                            .map((tag) => (
+                              <button
+                                key={tag}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const found = skills.find((s) => s.skill_name.toLowerCase() === tag.toLowerCase());
+                                  if (found) setSkillFilter(found.skill_id);
+                                  else setSearch(tag);
+                                }}
+                                title={`Filter by ${tag}`}
+                              >
+                                {tag}
+                              </button>
+                            ))}
+                        </div>
 
-                      <div className="gig-card-footer">
-                        <div className="client-line">
-                          <span className="small-avatar">{gig.client_name.split(" ").map((w) => w[0]).join("")}</span>
-                          <div>
-                            <strong>{gig.client_name}</strong>
-                            <small>{gig.department}</small>
+                        <div className="gig-card-footer">
+                          <div className="client-line">
+                            <span className="small-avatar">{gig.client_name.split(" ").map((w) => w[0]).join("")}</span>
+                            <div>
+                              <strong>{gig.client_name}</strong>
+                              <small>{gig.department}</small>
+                            </div>
+                          </div>
+
+                          <div className="gig-meta">
+                            <strong>${gig.budget}</strong>
+                            <small>due {gig.deadline.replace(", 2026", "")}</small>
                           </div>
                         </div>
 
-                        <div className="gig-meta">
-                          <strong>${gig.budget}</strong>
-                          <small>due {gig.deadline.replace(", 2026", "")}</small>
+                        <div className="bid-count">
+                          {gig.bid_count} proposal{Number(gig.bid_count) === 1 ? "" : "s"} <span>→</span>
                         </div>
-                      </div>
-
-                      <div className="bid-count">
-                        {gig.bid_count} proposal{Number(gig.bid_count) === 1 ? "" : "s"} <span>→</span>
-                      </div>
-                    </article>
-                  ))
-                ) : (
-                  <div className="empty-state">
-                    <span>⌁</span>
-                    <h3>No gigs found matching criteria</h3>
-                    <p>Try clearing filters or searching another term.</p>
-                  </div>
-                )}
-              </div>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="empty-state">
+                      <span>⌁</span>
+                      <h3>No gigs found matching criteria</h3>
+                      <p>Try clearing filters or searching another term.</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
 
           {view === "My gigs" && user && (
-            <MyGigs
-              gigs={myGigs.length ? myGigs : gigs.filter((gig) => gig.client_id === user.user_id)}
-              onOpen={openGig}
-              onEdit={(gig) => {
-                setEditingGig(gig);
-                setModal("edit");
-              }}
-              onDelete={(gigId) => void handleDeleteGig(gigId)}
-              onReview={(gig) => {
-                setReviewGig(gig);
-                setModal("review");
-              }}
-              onDispute={(gig) => {
-                setDisputeGig(gig);
-                setModal("dispute");
-              }}
-              request={request}
-            />
+            loadingUserData ? (
+              <SubpageSkeleton />
+            ) : (
+              <MyGigs
+                gigs={myGigs.length ? myGigs : gigs.filter((gig) => gig.client_id === user.user_id)}
+                onOpen={openGig}
+                onEdit={(gig) => {
+                  setEditingGig(gig);
+                  setModal("edit");
+                }}
+                onDelete={(gigId) => void handleDeleteGig(gigId)}
+                onReview={(gig) => {
+                  setReviewGig(gig);
+                  setModal("review");
+                }}
+                onDispute={(gig) => {
+                  setDisputeGig(gig);
+                  setModal("dispute");
+                }}
+                request={request}
+              />
+            )
           )}
 
           {view === "My bids" && user && (
-            <MyBids
-              bids={myBids}
-              onNotice={showNotice}
-              onDeleteBid={(bidId) => void handleDeleteBid(bidId)}
-              onDeliver={async (gigId) => {
-                await request("update_status", { gig_id: gigId, status: "Submitted" });
-              }}
-              onReview={(bid) => {
-                setReviewGig({
-                  gig_id: bid.gig_id,
-                  title: bid.gig_title || `Gig #${bid.gig_id}`,
-                  client_id: 0,
-                  accepted_freelancer_id: user.user_id,
-                  description: "",
-                  budget: bid.proposed_price,
-                  deadline: "",
-                  status: "Completed",
-                  client_name: bid.client_name || "Client",
-                  department: "",
-                  bid_count: 0,
-                  skills: null,
-                });
-                setModal("review");
-              }}
-            />
+            loadingUserData ? (
+              <SubpageSkeleton />
+            ) : (
+              <MyBids
+                bids={myBids}
+                onNotice={showNotice}
+                onDeleteBid={(bidId) => void handleDeleteBid(bidId)}
+                onDeliver={async (gigId) => {
+                  await request("update_status", { gig_id: gigId, status: "Submitted" });
+                }}
+                onReview={(bid) => {
+                  setReviewGig({
+                    gig_id: bid.gig_id,
+                    title: bid.gig_title || `Gig #${bid.gig_id}`,
+                    client_id: 0,
+                    accepted_freelancer_id: user.user_id,
+                    description: "",
+                    budget: bid.proposed_price,
+                    deadline: "",
+                    status: "Completed",
+                    client_name: bid.client_name || "Client",
+                    department: "",
+                    bid_count: 0,
+                    skills: null,
+                  });
+                  setModal("review");
+                }}
+              />
+            )
           )}
 
           {view === "Transactions" && user && (
-            <TransactionsView transactions={transactions} user={user} />
+            loadingUserData ? <SubpageSkeleton /> : <TransactionsView transactions={transactions} user={user} />
           )}
 
           {view === "Admin" && user && user.role_flag === "admin" && (
-            <AdminPanel
-              disputes={disputes}
-              topFreelancers={topFreelancers}
-              onResolve={async (disputeId, resolution) => {
-                await request("resolve_dispute", { dispute_id: disputeId, resolution });
-              }}
-            />
+            loadingUserData ? (
+              <SubpageSkeleton />
+            ) : (
+              <AdminPanel
+                disputes={disputes}
+                topFreelancers={topFreelancers}
+                onResolve={async (disputeId, resolution) => {
+                  await request("resolve_dispute", { dispute_id: disputeId, resolution });
+                }}
+              />
+            )
           )}
 
           {view === "Profile" && user && (
@@ -904,7 +948,7 @@ export default function Home() {
           <footer className="campus-footer">
             <span>
               <i className={connected ? "footer-dot live" : "footer-dot"} />{" "}
-              {connected ? `Connected to Live Backend (${API})` : `API Offline / Disconnected (${API})`}
+              {connected ? `Connected to Live Backend (${API})` : "Connecting to backend..."}
             </span>
             <span>Built for CSE-311 · CampusGigs</span>
           </footer>
@@ -916,11 +960,11 @@ export default function Home() {
           <form className="modal-form" onSubmit={submitLogin}>
             <label>
               Student Email
-              <input name="email" type="email" required placeholder="student@campus.edu" defaultValue="aisha@campus.edu" />
+              <input name="email" type="email" required placeholder="student@campus.edu" />
             </label>
             <label>
               Password
-              <input name="password" type="password" required placeholder="••••••••" defaultValue="password" />
+              <input name="password" type="password" required placeholder="••••••••" />
             </label>
 
             <button className="modal-submit primary">
@@ -1194,6 +1238,25 @@ export default function Home() {
         </div>
       )}
     </main>
+  );
+}
+
+function SubpageSkeleton() {
+  return (
+    <div className="subpage">
+      <div className="skeleton-line skeleton-title" style={{ width: "180px", height: "22px", marginBottom: "20px" }} />
+      <div className="simple-list">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div className="simple-row skeleton-row" key={i}>
+            <div className="skeleton-line skeleton-badge" />
+            <div style={{ flex: 1 }}>
+              <div className="skeleton-line skeleton-text" />
+              <div className="skeleton-line skeleton-text short" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1548,17 +1611,7 @@ function AdminPanel({
               </div>
             ))
           ) : (
-            <div className="rank-row">
-              <b>#1</b>
-              <div>
-                <strong>Aisha Rahman</strong>
-                <small>Computer Science</small>
-              </div>
-              <div>
-                <small>4 completed</small>
-                <em>4.9 ★</em>
-              </div>
-            </div>
+            <p className="muted-copy">No freelancer activity recorded yet.</p>
           )}
         </div>
       </div>
@@ -1756,5 +1809,3 @@ function Modal({ title, close, children }: { title: string; close: () => void; c
     </div>
   );
 }
-
-
